@@ -1,0 +1,10 @@
+# Local tooling / editor artefacts
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+.vscode/
+.idea/
+
+# WorkBuddy workspace metadata (local only, never published)
+.workbuddy/

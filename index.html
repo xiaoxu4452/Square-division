@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="description" content="方形剖分实验室：全屏无限画布，用四叉树尺寸场把任意矩形剖分成大小悬殊的正方形。">
+  <title>方形剖分实验室 · 无限画布</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Full-screen canvas -->
+  <canvas id="stage" aria-label="Squared rectangle infinite canvas"></canvas>
+  <div class="canvas-vignette" aria-hidden="true"></div>
+
+  <!-- Glass top bar -->
+  <header class="topbar glass" id="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 44 44" width="38" height="38">
+          <rect x="2"  y="2"  width="24" height="24" rx="2" fill="var(--mark1)"/>
+          <rect x="28" y="2"  width="14" height="14" rx="2" fill="var(--mark2)"/>
+          <rect x="28" y="18" width="7"  height="7"  rx="1" fill="var(--mark3)"/>
+          <rect x="37" y="18" width="5"  height="5"  rx="1" fill="var(--mark4)"/>
+          <rect x="28" y="27" width="14" height="5"  rx="1" fill="var(--mark5)"/>
+          <rect x="2"  y="28" width="14" height="14" rx="2" fill="var(--mark4)"/>
+          <rect x="18" y="28" width="6"  height="6"  rx="1" fill="var(--mark1)"/>
+          <rect x="18" y="36" width="6"  height="6"  rx="1" fill="var(--mark3)"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="eyebrow" data-i18n="brandTag"></span>
+        <h1 data-i18n="siteTitle"></h1>
+        <span class="brand-sub" data-i18n="siteSubtitle"></span>
+      </div>
+    </div>
+    <div class="top-tools">
+      <button type="button" id="btnKnowledge" class="tool-btn grad" data-i18n-title="btnKnowledge">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H12v17h5.5A2.5 2.5 0 0 1 20 22V5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span data-i18n="btnKnowledge"></span>
+      </button>
+      <button type="button" id="btnConsole" class="tool-btn is-active" data-i18n-title="btnConsole">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="7" r="2.2" fill="var(--glass)" stroke="currentColor" stroke-width="1.6"/><circle cx="15" cy="12" r="2.2" fill="var(--glass)" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="17" r="2.2" fill="var(--glass)" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span data-i18n="btnConsole"></span>
+      </button>
+      <div class="seg" role="group" aria-label="Language">
+        <button type="button" id="langZh" class="seg-btn is-active">中</button>
+        <button type="button" id="langEn" class="seg-btn">EN</button>
+      </div>
+      <button type="button" id="themeToggle" class="icon-btn" data-i18n-title="themeToggle" data-i18n-aria="themeToggle" aria-label="Toggle theme">
+        <svg class="i-moon" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Control panel: glass popover, collapsible to the top bar -->
+  <aside class="console glass" id="console">
+    <div class="console-head">
+      <div>
+        <span class="eyebrow" data-i18n="consoleTag"></span>
+        <h2 data-i18n="consoleTitle"></h2>
+      </div>
+      <button type="button" id="consoleCollapse" class="mini-icon" data-i18n-title="collapse" aria-label="Collapse">−</button>
+    </div>
+
+    <div class="console-body">
+      <div class="field">
+        <label for="algoMode" data-i18n="algoLabel"></label>
+        <select id="algoMode">
+          <option value="quad" data-i18n="algoQuad"></option>
+          <option value="euclid" data-i18n="algoEuclid"></option>
+          <option value="network" data-i18n="algoNetwork"></option>
+        </select>
+        <p class="hint-line" id="algoHint" data-i18n="algoHintQuad"></p>
+      </div>
+
+      <div class="field">
+        <div class="field-row"><label for="centers" data-i18n="centersLabel"></label><output id="centersVal">2</output></div>
+        <input type="range" id="centers" min="1" max="5" step="1" value="2">
+      </div>
+      <div class="field">
+        <div class="field-row"><label for="power" data-i18n="powerLabel"></label><output id="powerVal">2.6</output></div>
+        <input type="range" id="power" min="1" max="5" step="0.1" value="2.6">
+      </div>
+      <div class="field">
+        <div class="field-row"><label for="detail" data-i18n="detailLabel"></label><output id="detailVal">8</output></div>
+        <input type="range" id="detail" min="5" max="11" step="1" value="8">
+      </div>
+
+      <div class="field">
+        <label for="palette" data-i18n="paletteLabel"></label>
+        <select id="palette">
+          <option value="spectrum" data-i18n="palSpectrum"></option>
+          <option value="sky" data-i18n="palSky"></option>
+          <option value="warm" data-i18n="palWarm"></option>
+          <option value="mono" data-i18n="palMono"></option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="seed" data-i18n="seedLabel"></label>
+        <div class="seed-row">
+          <input type="number" id="seed" value="2026" min="1" step="1">
+          <button type="button" id="reseed" class="mini-btn" data-i18n="reseed"></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="group-label" data-i18n="ratioLabel"></span>
+        <div class="chips" id="ratioChips">
+          <button type="button" data-ratio="1" data-i18n="ratioSquare"></button>
+          <button type="button" data-ratio="1.5" data-i18n="ratio32"></button>
+          <button type="button" data-ratio="1.7778" data-i18n="ratio169"></button>
+          <button type="button" data-ratio="1.618" data-i18n="ratioGolden"></button>
+          <button type="button" data-ratio="0.6667" data-i18n="ratioPortrait"></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="group-label" data-i18n="optionsLabel"></span>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="showGrid" checked><span data-i18n="optGrid"></span></label>
+          <label class="check"><input type="checkbox" id="animate" checked><span data-i18n="optAnimate"></span></label>
+          <label class="check"><input type="checkbox" id="showLabels"><span data-i18n="optLabels"></span></label>
+          <label class="check"><input type="checkbox" id="showFoci" checked><span data-i18n="optFoci"></span></label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="btnCompute" class="btn grad big" data-i18n="btnCompute"></button>
+        <div class="btn-row">
+          <button type="button" id="btnRedraw" class="btn" data-i18n="btnRedraw"></button>
+          <button type="button" id="btnFit" class="btn" data-i18n="btnFit"></button>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btnRandom" class="btn" data-i18n="btnRandom"></button>
+          <button type="button" id="btnExport" class="btn" data-i18n="btnExport"></button>
+        </div>
+        <button type="button" id="btnClear" class="btn ghost wide" data-i18n="btnClear"></button>
+      </div>
+      <p class="side-tip" data-i18n="hintInteract"></p>
+    </div>
+  </aside>
+
+  <!-- Bottom-left stats HUD -->
+  <div class="hud glass" id="hud">
+    <div class="hud-stats">
+      <div class="hud-item"><span data-i18n="statRatio"></span><b id="statRatio">—</b></div>
+      <div class="hud-item"><span data-i18n="statBlocks"></span><b id="statBlocks">—</b></div>
+      <div class="hud-item"><span data-i18n="statMin"></span><b id="statMin">—</b></div>
+      <div class="hud-item"><span data-i18n="statMax"></span><b id="statMax">—</b></div>
+      <div class="hud-item"><span data-i18n="statCenters"></span><b id="statCenters">—</b></div>
+      <div class="hud-item"><span data-i18n="statCoverage"></span><b id="statCoverage">—</b></div>
+      <div class="hud-item"><span data-i18n="statTime"></span><b id="statTime">—</b></div>
+      <div class="hud-item"><span data-i18n="statPrecision"></span><b id="statPrecision">—</b></div>
+    </div>
+    <div class="hud-meta" id="metaLine"></div>
+  </div>
+
+  <!-- Bottom-right zoom controls -->
+  <div class="zoombar glass">
+    <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+    <span id="zoomLabel">100%</span>
+    <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+    <button type="button" id="zoomFit" class="fit-btn" data-i18n="btnFitShort"></button>
+  </div>
+
+  <!-- Initial hint -->
+  <div class="stage-hint glass" id="stageHint">
+    <div class="hint-icon" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="44" height="44"><rect x="7" y="11" width="34" height="26" rx="2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3"/><path d="M7 11h8v8H7zM15 19h8v8h-8zM23 27h8v10h-8zM31 19h10v8H31z" fill="currentColor" opacity=".6"/><circle cx="36" cy="33" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+    </div>
+    <strong data-i18n="hintTitle"></strong>
+    <p data-i18n-html="hintText"></p>
+  </div>
+
+  <div class="keyhelp glass" id="keyhelp" data-i18n="keyHelp"></div>
+  <div class="tooltip glass" id="tooltip" hidden></div>
+
+  <!-- Mathematics explainer (all content collected here) -->
+  <div class="modal" id="knowledge" hidden>
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-panel glass" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow" data-i18n="scienceNo"></span>
+          <h2 id="modalTitle" data-i18n="scienceTitle"></h2>
+          <p data-i18n="scienceLead"></p>
+        </div>
+        <button type="button" id="modalClose" class="mini-icon big" aria-label="Close">×</button>
+      </div>
+      <div class="modal-scroll">
+        <div class="science-grid">
+          <article class="s-card">
+            <div class="s-card-top"><span class="s-no" data-i18n="card1No"></span><h3 data-i18n="card1Title"></h3></div>
+            <div class="s-body" data-i18n-html="card1Body"></div>
+          </article>
+          <article class="s-card">
+            <div class="s-card-top"><span class="s-no" data-i18n="card2No"></span><h3 data-i18n="card2Title"></h3></div>
+            <div class="s-body" data-i18n-html="card2Body"></div>
+          </article>
+          <article class="s-card">
+            <div class="s-card-top"><span class="s-no" data-i18n="card3No"></span><h3 data-i18n="card3Title"></h3></div>
+            <div class="s-body" data-i18n-html="card3Body"></div>
+          </article>
+          <article class="s-card">
+            <div class="s-card-top"><span class="s-no" data-i18n="card4No"></span><h3 data-i18n="card4Title"></h3></div>
+            <div class="s-body" data-i18n-html="card4Body"></div>
+          </article>
+          <article class="s-card diagram-card">
+            <div class="s-card-top"><span class="s-no">⌁</span><h3 data-i18n="diagramTitle"></h3></div>
+            <svg class="smith" viewBox="0 0 460 200" role="img" aria-label="Smith diagram">
+              <g class="net-line"><line x1="36" y1="30" x2="424" y2="30"/><line x1="36" y1="80" x2="424" y2="80"/><line x1="36" y1="130" x2="424" y2="130"/><line x1="36" y1="178" x2="424" y2="178"/></g>
+              <g class="net-pot"><text x="4" y="34">V=33</text><text x="4" y="84">V=18</text><text x="4" y="134">V=8</text><text x="6" y="182">V=0</text></g>
+              <g class="net-wire">
+                <path d="M96 30 V46 M96 64 V80 M96 80 V96 M96 114 V130 M96 130 V146 M96 162 V178"/>
+                <path d="M168 30 V50 M168 68 V130 M168 130 V148 M168 166 V178"/>
+                <path d="M244 30 V52 M244 70 V80 M244 80 V100 M244 118 V130 M244 130 V150 M244 166 V178"/>
+                <path d="M320 30 V54 M320 72 V80 M320 80 V104 M320 122 V130 M320 130 V152 M320 168 V178"/>
+                <path d="M392 30 V56 M392 74 V130 M392 130 V154 M392 170 V178"/>
+              </g>
+              <g class="net-res">
+                <rect x="88" y="46" width="16" height="18" rx="2"/><rect x="160" y="50" width="16" height="18" rx="2"/><rect x="236" y="52" width="16" height="18" rx="2"/><rect x="312" y="54" width="16" height="18" rx="2"/><rect x="384" y="56" width="16" height="18" rx="2"/>
+                <rect x="88" y="96" width="16" height="18" rx="2"/><rect x="236" y="100" width="16" height="18" rx="2"/><rect x="312" y="104" width="16" height="18" rx="2"/>
+                <rect x="88" y="146" width="16" height="16" rx="2"/><rect x="160" y="148" width="16" height="18" rx="2"/><rect x="236" y="150" width="16" height="16" rx="2"/><rect x="312" y="152" width="16" height="16" rx="2"/><rect x="384" y="154" width="16" height="16" rx="2"/>
+              </g>
+              <g class="net-cur"><text x="110" y="58">I=15</text><text x="182" y="62">I=18</text><text x="258" y="64">I=14</text><text x="334" y="66">I=10</text><text x="406" y="68">I=9</text><text x="110" y="108">I=7</text><text x="258" y="112">I=4</text><text x="334" y="116">I=8</text><text x="110" y="158">I=1</text></g>
+              <g class="net-node">
+                <circle cx="96" cy="30" r="3"/><circle cx="168" cy="30" r="3"/><circle cx="244" cy="30" r="3"/><circle cx="320" cy="30" r="3"/><circle cx="392" cy="30" r="3"/>
+                <circle cx="96" cy="80" r="3"/><circle cx="244" cy="80" r="3"/><circle cx="320" cy="80" r="3"/><circle cx="392" cy="130" r="3"/>
+                <circle cx="96" cy="130" r="3"/><circle cx="168" cy="130" r="3"/><circle cx="244" cy="130" r="3"/><circle cx="320" cy="130" r="3"/>
+                <circle cx="96" cy="178" r="3"/><circle cx="168" cy="178" r="3"/><circle cx="244" cy="178" r="3"/><circle cx="320" cy="178" r="3"/><circle cx="392" cy="178" r="3"/>
+              </g>
+              <g class="net-note"><text x="352" y="196">R = 1Ω each</text></g>
+            </svg>
+            <p class="diagram-caption" data-i18n="diagramCaption"></p>
+          </article>
+        </div>
+        <div class="refs">
+          <h3 data-i18n="refsTitle"></h3>
+          <div class="ref-links" data-i18n-html="refsList"></div>
+          <p class="modal-foot" data-i18n="footerNote"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/i18n.js"></script>
+  <script src="js/bigdec.js"></script>
+  <script src="js/squaring.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

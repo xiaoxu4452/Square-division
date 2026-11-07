@@ -1,0 +1,969 @@
+/* ==========================================================================
+ * app.js — Full-screen infinite canvas / camera / LOD rendering / glass UI  (v2)
+ *
+ * Depends on: window.I18N (i18n.js), window.Squaring (squaring.js)
+ * Rendering strategy:
+ *   · Generate only the tiles needed by the current viewport + zoom each frame
+ *     (LOD); zooming in unfolds a new subdivision level;
+ *   · Tile coordinates are doubles, remapped at draw time to local coordinates
+ *     (world - viewCenter) * scale to avoid precision loss when summing large values;
+ *   · Tiered quality rendering (radial gradient on large tiles / same-hue stroke
+ *     on medium tiles / no stroke on small tiles), painted progressively across
+ *     frames so tens of thousands of tiles never block in a single pass;
+ *   · During pan/zoom, the previous frame's snapshot serves as an affine preview;
+ *     an exact redraw runs once motion stops.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  var T = window.I18N, S = window.Squaring, BD = window.BigDec;
+  var $ = function (id) { return document.getElementById(id); };
+  var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
+  var cap = function (s) { return s.charAt(0).toUpperCase() + s.slice(1); };
+  var TAU = Math.PI * 2;
+
+  var canvas = $('stage');
+  var ctx = canvas.getContext('2d', { alpha: false });
+
+  var state = {
+    theme: 'dark', lang: 'zh', W: 1, H: 1, dpr: 1,
+    phase: 'select', rectN: null, drag: null, pointer: null,
+    view: { cx: BD.from(0), cy: BD.from(0), cxHi: 0, cyHi: 0, offX: 0, offY: 0, scale: 1, fitScale: 1 },
+    world: null, mode: 'quad', foci: [],
+    staticBlocks: null, staticMeta: null,
+    cache: new Map(), blocks: [], colors: [], drawOrder: [], meta: {},
+    paint: {}, snapshot: null, snapView: null,
+    renderQueue: null, raf: 0, dirty: true, anim: null,
+    hover: -1, hoverRect: null, wheelTimer: 0,
+    pinch: null, touches: new Map(),
+    consoleOpen: true, modalOpen: false
+  };
+
+  /* ------------------------------ Core ------------------------------ */
+  function readStore(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
+  function writeStore(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+  function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+  function refreshPaint() {
+    var dark = state.theme === 'dark';
+    state.paint = {
+      stage: cssVar('--stage'),
+      grid: dark ? 'rgba(125,165,225,.075)' : 'rgba(35,85,155,.085)',
+      gridStrong: dark ? 'rgba(125,165,225,.15)' : 'rgba(35,85,155,.16)',
+      accent: cssVar('--accent'), accent2: cssVar('--accent-2'),
+      text: cssVar('--text'), faint: cssVar('--faint')
+    };
+  }
+
+  var toastTimer = 0;
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2000);
+  }
+
+  function fmtSide(v) {
+    if (v >= 1000) return Math.round(v).toLocaleString('en-US');
+    if (v >= 10) return (Math.round(v * 10) / 10).toString();
+    if (v >= 0.1) return v.toFixed(2);
+    return v.toExponential(1);
+  }
+  function seed() { return parseInt($('seed').value, 10) || 1; }
+
+  /* ------------------ Camera: BigDec high-precision coordinates ------------------ */
+  function scaleBD() { return BD.from(state.view.scale); }
+
+  /** Split into a double main value + a high-precision residual: rendering takes the fast double path while positions stay exact */
+  function syncView() {
+    var v = state.view;
+    v.cxHi = BD.toNumber(v.cx);
+    v.cyHi = BD.toNumber(v.cy);
+    var s = scaleBD();
+    v.offX = BD.toNumber(BD.mul(BD.sub(v.cx, BD.from(v.cxHi)), s));
+    v.offY = BD.toNumber(BD.mul(BD.sub(v.cy, BD.from(v.cyHi)), s));
+  }
+  function screenX(wx) {
+    var v = state.view;
+    return (wx - v.cxHi) * v.scale + state.W / 2 - v.offX;
+  }
+  function screenY(wy) {
+    var v = state.view;
+    return (wy - v.cyHi) * v.scale + state.H / 2 - v.offY;
+  }
+  function viewport() {
+    var v = state.view, s = scaleBD();
+    var hw = BD.div(BD.from(state.W / 2), s), hh = BD.div(BD.from(state.H / 2), s);
+    return {
+      x0: BD.toNumber(BD.sub(v.cx, hw)), y0: BD.toNumber(BD.sub(v.cy, hh)),
+      x1: BD.toNumber(BD.add(v.cx, hw)), y1: BD.toNumber(BD.add(v.cy, hh)),
+      ox: v.cxHi, oy: v.cyHi, hw: BD.toNumber(hw), hh: BD.toNumber(hh),
+      scale: v.scale
+    };
+  }
+  function toWorld(px, py) {
+    var v = state.view;
+    return {
+      x: v.cxHi + (px - state.W / 2) / v.scale + v.offX / v.scale,
+      y: v.cyHi + (py - state.H / 2) / v.scale + v.offY / v.scale
+    };
+  }
+  function toScreen(wx, wy) { return { x: screenX(wx), y: screenY(wy) }; }
+
+  function fitView() {
+    var w = state.world; if (!w) return;
+    // Portrait phones have very little horizontal room: use almost the full
+    // width so the tiling is not reduced to a thin band on a tall screen.
+    var margin = (state.W <= 640 && state.H > state.W) ? 0.99 : 0.94;
+    var s = Math.min(state.W * margin / w.gw, state.H * margin / w.gh);
+    var v = state.view;
+    v.cx = BD.from(w.gw / 2); v.cy = BD.from(w.gh / 2);
+    v.scale = s; v.fitScale = s;
+    syncView();
+    updateZoomLabel();
+  }
+
+  /** Anchored zoom: the world point is solved exactly with BigDec, so even 10^9x zoom does not drift */
+  function zoomAt(factor, px, py) {
+    var v = state.view;
+    px = px == null ? state.W / 2 : px;
+    py = py == null ? state.H / 2 : py;
+    var s1 = scaleBD(), dx = BD.from(px - state.W / 2), dy = BD.from(py - state.H / 2);
+    var ax = BD.add(v.cx, BD.div(dx, s1)), ay = BD.add(v.cy, BD.div(dy, s1));
+    v.scale = clamp(v.scale * factor, 1e-5, 1e12);
+    var s2 = scaleBD();
+    var bx = BD.add(v.cx, BD.div(dx, s2)), by = BD.add(v.cy, BD.div(dy, s2));
+    v.cx = BD.add(v.cx, BD.sub(ax, bx));
+    v.cy = BD.add(v.cy, BD.sub(ay, by));
+    syncView();
+    updateZoomLabel();
+  }
+  function zoomBy(factor, px, py) { if (state.phase === 'result') zoomAt(factor, px, py); }
+  function updateZoomLabel() {
+    var r = state.view.scale / (state.view.fitScale || 1);
+    var txt;
+    if (r < 1) txt = (r * 100).toFixed(r < 0.1 ? 1 : 0) + '%';
+    else if (r < 10) txt = (r * 100).toFixed(0) + '%';
+    else if (r < 1000) txt = r.toFixed(0) + '×';
+    else txt = r.toExponential(1) + '×';
+    $('zoomLabel').textContent = txt;
+  }
+
+  /* ---------------------------- Compute ---------------------------- */
+  function runCompute(o) {
+    o = o || {};
+    var ratio = o.ratio;
+    if (!ratio && state.rectN) ratio = state.rectN.w / state.rectN.h;
+    if (!ratio) { toast(T.t('emptyWarn')); return; }
+
+    var world = S.buildWorld(ratio, { depth: +$('detail').value, rows: 12 });
+    state.world = world;
+    state.mode = $('algoMode').value;
+    state.foci = S.defaultFoci(world, +$('centers').value, seed());
+    state.cache.clear();
+    state.staticBlocks = null;
+    if (state.mode !== 'quad') {
+      var st = S.staticTiling(state.mode, world);
+      state.staticBlocks = st.blocks;
+      state.staticMeta = st.meta;
+    }
+    state.phase = 'result';
+    state.hover = -1; state.hoverRect = null;
+    state.snapshot = null; state.renderQueue = null;
+    fitView();
+    hideHint();
+    $('btnCompute').classList.remove('pulse');
+    updateAlgoHint();
+
+    state.anim = ($('animate').checked && state.mode === 'quad' && !o.noAnim)
+      ? { start: performance.now(), duration: 1000 } : null;
+    requestRender(true);
+  }
+
+  function refreshResult() {
+    if (state.phase !== 'result') return;
+    state.snapshot = null;
+    state.hover = -1; state.hoverRect = null;
+    state.anim = null;
+    requestRender(true);
+  }
+
+  function regenerate() {
+    if (state.phase !== 'result' || !state.world) return;
+    var t0 = performance.now();
+    var w = state.world, v = viewport(), animating = !!state.anim;
+    var minPx = 1.7;
+    if (animating) {
+      var p = clamp((performance.now() - state.anim.start) / state.anim.duration, 0, 1);
+      minPx = 1.7 + 300 * Math.pow(1 - p, 2.2);
+    }
+    var opts = {
+      foci: state.foci,
+      power: +$('power').value,
+      maxDepth: 48,
+      radius: Math.min(w.gw, w.gh) * 0.62,
+      minPx: minPx,
+      maxBlocks: animating ? 14000 : 100000
+    };
+
+    // Quadtree tiles are always expressed in viewport-local coordinates.
+    var blocks;
+    if (state.mode === 'quad') {
+      blocks = S.generate(w, v, opts);
+    } else {
+      blocks = (state.staticBlocks || []).filter(function (b) {
+        return b.x < v.x1 && b.y < v.y1 && b.x + b.s > v.x0 && b.y + b.s > v.y0;
+      }).map(function (b) {
+        return {
+          x: b.x - v.ox, y: b.y - v.oy, s: b.s, depth: b.depth || 0,
+          label: b.label, kind: b.kind, wx: b.x, wy: b.y
+        };
+      });
+    }
+    var localView = { x0: -v.hw, y0: -v.hh, x1: v.hw, y1: v.hh, scale: v.scale };
+    var colors = S.colorize(blocks, state.cache, {
+      palette: $('palette').value, theme: state.theme, seed: seed(),
+      hueShift: seed() % 360, view: localView
+    });
+
+    var min = Infinity, max = 0, lmin = Infinity, lmax = 0;
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (b.s < min) min = b.s;
+      if (b.s > max) max = b.s;
+      if ((b.depth || 0) < lmin) lmin = b.depth || 0;
+      if ((b.depth || 0) > lmax) lmax = b.depth || 0;
+    }
+    state.blocks = blocks;
+    state.colors = colors;
+    state.drawOrder = blocks.map(function (_, i2) { return i2; })
+      .sort(function (a, b2) { return blocks[b2].s - blocks[a].s || a - b2; });
+    state.meta = {
+      count: blocks.length, min: blocks.length ? min : 0, max: max,
+      lmin: blocks.length ? lmin : 0, lmax: lmax,
+      capped: !!blocks.exceeded
+    };
+    updateHUD(performance.now() - t0);
+  }
+
+  /* --------------------------- Rendering --------------------------- */
+  function requestRender(full) {
+    state.dirty = true;
+    if (full) { state.renderQueue = null; state.snapshot = null; }
+    schedule();
+  }
+  function schedule() { if (!state.raf) state.raf = requestAnimationFrame(loop); }
+
+  function loop(ts) {
+    state.raf = 0;
+    if (state.modalOpen) return;
+
+    if (state.anim) {
+      if (ts - state.anim.start >= state.anim.duration) state.anim = null;
+      state.dirty = true;
+    }
+    if (state.phase === 'select') {
+      paintSelect();
+      state.dirty = false;
+      return;
+    }
+    if (state.dirty) {
+      state.dirty = false;
+      regenerate();
+      paintBackground();
+      // Full single-pass draw: prevents unpainted regions in any intermediate frame (relaxed time budget)
+      paintRange(0, state.drawOrder.length);
+      finishPaint();
+      state.renderQueue = null;
+    }
+    if (state.dirty || state.anim) schedule();
+  }
+
+  function paintBackground() {
+    var p = state.paint, W = state.W, H = state.H;
+    ctx.fillStyle = p.stage;
+    ctx.fillRect(0, 0, W, H);
+    if (!$('showGrid').checked) return;
+    var v = viewport();
+    var target = 92 / v.scale;
+    var step = Math.pow(2, Math.ceil(Math.log(Math.max(target, 1e-9)) / Math.LN2));
+    if (!isFinite(step) || step <= 0) return;
+    var fine = step / 4;
+    // Two-level adaptive world grid
+    drawGridLines(fine, p.grid, 0.6);
+    drawGridLines(step, p.gridStrong, 1.0);
+  }
+
+  function drawGridLines(step, color, width) {
+    var v = viewport(), W = state.W, H = state.H;
+    var x0 = Math.floor(v.x0 / step) * step, y0 = Math.floor(v.y0 / step) * step;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+    var count = 0;
+    for (var x = x0; x <= v.x1 && count < 600; x += step, count++) {
+      var sx = screenX(x);
+      ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+    }
+    count = 0;
+    for (var y = y0; y <= v.y1 && count < 600; y += step, count++) {
+      var sy = screenY(y);
+      ctx.moveTo(0, sy); ctx.lineTo(W, sy);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+
+  function paintRange(from, to) {
+    var v = state.view, W = state.W, H = state.H;
+    var blocks = state.blocks, colors = state.colors, order = state.drawOrder;
+    var labels = $('showLabels').checked;
+    for (var k = from; k < to; k++) {
+      var i = order[k];
+      if (i == null) continue;
+      var b = blocks[i], col = colors[i];
+      if (!b || !col) continue;
+      // Local coordinates: sx = lx * scale + centre, with the BigDec residual
+      // applied. Avoids catastrophic cancellation at extreme zoom levels.
+      var sx = b.x * v.scale + W / 2 - v.offX;
+      var sy = b.y * v.scale + H / 2 - v.offY;
+      var ps = b.s * v.scale;
+      if (ps <= 0 || sx > W + 2 || sy > H + 2 || sx + ps < -2 || sy + ps < -2) continue;
+
+      // Reuse the integer-grid hash from the colouring stage: even at tiny scales neighbouring tiles will not collide into the same jitter value
+      var j = col.j == null ? 0.5 : col.j;
+      var h = (col.h + (j - 0.5) * 12 + 360) % 360;
+      var sat = clamp(col.s + (j - 0.5) * 9, 52, 95);
+      var l = clamp(col.l + (b.depth || 0) * 0.1 + (j - 0.5) * 5, 32, 76);
+      ctx.fillStyle = 'hsl(' + h.toFixed(1) + ',' + sat.toFixed(1) + '%,' + l.toFixed(1) + '%)';
+      // +0.45px removes sub-pixel seams (without visible overlap)
+      ctx.fillRect(sx, sy, ps + 0.45, ps + 0.45);
+
+      if (ps > 7) {
+        var lw = Math.min(1.5, Math.max(0.6, ps * 0.032));
+        ctx.strokeStyle = 'hsl(' + h + ',' + sat + '%,' + Math.max(16, l - 20) + '%)';
+        ctx.lineWidth = lw;
+        ctx.strokeRect(sx + lw / 2, sy + lw / 2, Math.max(0, ps - lw), Math.max(0, ps - lw));
+      }
+      if (ps > 36) {
+        ctx.fillStyle = 'hsla(' + h + ',' + sat + '%,' + Math.min(90, l + 17) + '%,.5)';
+        var e = Math.min(1.5, ps * 0.035);
+        ctx.fillRect(sx, sy, ps, e);
+        ctx.fillRect(sx, sy, e, ps);
+      }
+      if (ps > 120) {
+        var g = ctx.createRadialGradient(sx + ps * 0.3, sy + ps * 0.24, ps * 0.04, sx + ps * 0.5, sy + ps * 0.5, ps * 0.86);
+        g.addColorStop(0, 'hsla(' + h + ',' + sat + '%,' + Math.min(92, l + 20) + '%,.15)');
+        g.addColorStop(1, 'hsla(' + h + ',' + sat + '%,' + Math.max(10, l - 24) + '%,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(sx, sy, ps, ps);
+      }
+      if (labels && ps > 46) {
+        var label = b.label != null ? String(b.label) : fmtSide(b.s);
+        var fs = clamp(ps * 0.19, 10, 26);
+        ctx.font = '700 ' + fs.toFixed(0) + 'px ui-monospace, Consolas, monospace';
+        ctx.fillStyle = 'hsla(' + h + ',' + sat + '%,' + (l > 54 ? Math.max(12, l - 44) : Math.min(94, l + 44)) + '%,.92)';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, sx + ps / 2, sy + ps / 2);
+      }
+    }
+  }
+
+  function finishPaint() {
+    var w = state.world, v = state.view;
+    if (!w) return;
+    // World border (sky-blue gradient)
+    var a = toScreen(0, 0), b2 = toScreen(w.gw, w.gh);
+    var grad = ctx.createLinearGradient(a.x, a.y, b2.x, b2.y);
+    grad.addColorStop(0, '#7dd3fc'); grad.addColorStop(0.5, '#38bdf8'); grad.addColorStop(1, '#4f6ef7');
+    ctx.save();
+    ctx.strokeStyle = grad; ctx.lineWidth = 1.6;
+    ctx.globalAlpha = 0.85;
+    ctx.strokeRect(a.x, a.y, b2.x - a.x, b2.y - a.y);
+    ctx.restore();
+
+    if ($('showFoci').checked && state.mode === 'quad') paintFoci();
+    if (state.mode === 'network' && state.staticMeta && state.staticMeta.inset) paintInset();
+    if (state.drag) paintSelectFrame(normDrag(state.drag));
+    saveSnapshot();
+  }
+
+  function paintFoci() {
+    state.foci.forEach(function (f, i) {
+      var p = toScreen(f.x, f.y);
+      if (p.x < -40 || p.y < -40 || p.x > state.W + 40 || p.y > state.H + 40) return;
+      ctx.save();
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26);
+      g.addColorStop(0, 'rgba(56,189,248,.5)');
+      g.addColorStop(1, 'rgba(56,189,248,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, 26, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, TAU); ctx.stroke();
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, TAU); ctx.fill();
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), p.x + 12, p.y - 9);
+      ctx.restore();
+    });
+  }
+
+  function paintInset() {
+    var m = state.staticMeta.inset;
+    var a = toScreen(m.x, m.y), b = toScreen(m.x + m.w, m.y + m.h);
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1;
+    ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+    ctx.setLineDash([]);
+    ctx.font = '600 11px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = state.paint.accent;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText(state.staticMeta.W0 + '×' + state.staticMeta.H0 + ' · PERFECT', a.x + 4, a.y - 6);
+    ctx.restore();
+  }
+
+  function saveSnapshot() {
+    if (!state.snapshot) state.snapshot = document.createElement('canvas');
+    var s = state.snapshot;
+    if (s.width !== canvas.width || s.height !== canvas.height) {
+      s.width = canvas.width; s.height = canvas.height;
+    }
+    var sc = s.getContext('2d');
+    sc.drawImage(canvas, 0, 0);
+    state.snapView = {
+      cxD: BD.toNumber(state.view.cx), cyD: BD.toNumber(state.view.cy),
+      scale: state.view.scale
+    };
+  }
+
+  /** During pan/zoom: affine preview from the snapshot avoids regenerating tens of thousands of tiles every frame */
+  function preview() {
+    var s = state.snapshot, sv = state.snapView;
+    if (!s || !sv || state.phase !== 'result') { paintSelect(); return; }
+    var v = state.view, ratio = v.scale / sv.scale;
+    var tx = state.W / 2 - ratio * state.W / 2 + (sv.cxD - BD.toNumber(v.cx)) * v.scale;
+    var ty = state.H / 2 - ratio * state.H / 2 + (sv.cyD - BD.toNumber(v.cy)) * v.scale;
+    ctx.fillStyle = state.paint.stage;
+    ctx.fillRect(0, 0, state.W, state.H);
+    ctx.drawImage(s, tx, ty, state.W * ratio, state.H * ratio);
+  }
+
+  /* --------------------------- Selection state --------------------------- */
+  function paintSelect() {
+    var W = state.W, H = state.H;
+    ctx.fillStyle = state.paint.stage;
+    ctx.fillRect(0, 0, W, H);
+    if ($('showGrid').checked) {
+      ctx.save();
+      ctx.strokeStyle = state.paint.grid; ctx.lineWidth = 1; ctx.beginPath();
+      for (var x = 0; x < W; x += 64) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); }
+      for (var y = 0; y < H; y += 64) { ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); }
+      ctx.stroke(); ctx.restore();
+    }
+    var r = state.drag ? normDrag(state.drag) : state.rectN;
+    if (r) paintSelectFrame(r);
+  }
+
+  function paintSelectFrame(r) {
+    ctx.save();
+    ctx.fillStyle = state.theme === 'dark' ? 'rgba(56,189,248,.10)' : 'rgba(14,165,233,.10)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.setLineDash([7, 5]);
+    ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1.6;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.setLineDash([]);
+    ctx.fillStyle = state.paint.accent;
+    [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]
+      .forEach(function (q) { ctx.fillRect(q[0] - 3, q[1] - 3, 6, 6); });
+    var txt = T.t('dragSize', { w: Math.round(r.w), h: Math.round(r.h) });
+    ctx.font = '600 11px ui-monospace, Consolas, monospace';
+    var tw = ctx.measureText(txt).width;
+    var bx = clamp(r.x + r.w / 2 - (tw + 16) / 2, 6, state.W - tw - 22);
+    var by = r.y > 34 ? r.y - 26 : r.y + r.h + 6;
+    ctx.fillStyle = state.theme === 'dark' ? 'rgba(13,19,32,.9)' : 'rgba(255,255,255,.92)';
+    ctx.fillRect(bx, by, tw + 16, 20);
+    ctx.fillStyle = state.paint.text;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, bx + 8, by + 10);
+    ctx.restore();
+  }
+
+  function normDrag(d) {
+    return { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
+  }
+
+  /* --------------------------- HUD --------------------------- */
+  function emptyHUD() {
+    ['statRatio', 'statBlocks', 'statMin', 'statMax', 'statCenters', 'statCoverage', 'statTime']
+      .forEach(function (id) { $(id).textContent = T.t('statEmpty'); });
+    $('metaLine').textContent = '';
+    $('zoomLabel').textContent = '—';
+  }
+  function updateHUD(ms) {
+    var w = state.world, m = state.meta;
+    if (!w) { emptyHUD(); return; }
+    $('statRatio').textContent = w.m + ':' + w.n;
+    $('statBlocks').textContent = m.count.toLocaleString('en-US');
+    $('statMin').textContent = fmtSide(m.min) + ' u';
+    $('statMax').textContent = fmtSide(m.max) + ' u';
+    $('statCenters').textContent = state.mode === 'quad' ? String(state.foci.length) : T.t('statEmpty');
+    $('statCoverage').textContent = '100%';
+    $('statTime').textContent = ms.toFixed(0) + ' ms';
+    var line;
+    if (state.mode === 'euclid' && state.staticMeta) {
+      line = T.t('metaEuclid', { cf: state.staticMeta.cf.join(', '), steps: state.staticMeta.cf.length });
+    } else if (state.mode === 'network' && state.staticMeta) {
+      line = T.t('metaNetwork', {
+        ratio: state.staticMeta.ratio, steps: state.staticMeta.steps,
+        sides: state.staticMeta.sides.slice().sort(function (a, b) { return a - b; }).join(', ')
+      });
+    } else {
+      line = T.t('metaQuad', {
+        gw: w.gw, gh: w.gh, d: w.depth, lmin: m.lmin, lmax: m.lmax,
+        count: m.count, capped: m.capped ? T.t('capped') : ''
+      });
+    }
+    $('metaLine').textContent = line;
+  }
+
+  function updateAlgoHint() {
+    var key = 'algoHint' + cap(state.mode);
+    var el = $('algoHint');
+    el.setAttribute('data-i18n', key);
+    el.textContent = T.t(key);
+  }
+
+  function hideHint() { $('stageHint').classList.add('is-hidden'); }
+  function showHint() { $('stageHint').classList.remove('is-hidden'); }
+
+  /* --------------------------- Hover --------------------------- */
+  function handleHover(p) {
+    var tip = $('tooltip');
+    if (state.phase !== 'result' || !state.snapshot || state.renderQueue || state.pointer || state.anim) {
+      tip.hidden = true; return;
+    }
+    var vs = state.view;
+    // Hit-test in the same viewport-local space used by the quadtree.
+    var lx = (p.x - state.W / 2 + vs.offX) / vs.scale;
+    var ly = (p.y - state.H / 2 + vs.offY) / vs.scale;
+    var found = -1, bs = state.blocks;
+    for (var i = bs.length - 1; i >= 0; i--) {
+      var b = bs[i];
+      if (lx >= b.x && lx < b.x + b.s && ly >= b.y && ly < b.y + b.s) { found = i; break; }
+    }
+    // Restore the previous highlight locally from the snapshot
+    if (state.hoverRect) {
+      var r0 = state.hoverRect, d = state.dpr;
+      ctx.drawImage(state.snapshot, (r0.x - 3) * d, (r0.y - 3) * d, (r0.w + 6) * d, (r0.h + 6) * d,
+        r0.x - 3, r0.y - 3, r0.w + 6, r0.h + 6);
+    }
+    state.hover = found; state.hoverRect = null;
+    if (found < 0) { tip.hidden = true; canvas.style.cursor = state.phase === 'result' ? 'grab' : 'crosshair'; return; }
+    var q = bs[found];
+    var a = { x: q.x * vs.scale + state.W / 2 - vs.offX, y: q.y * vs.scale + state.H / 2 - vs.offY };
+    var ps = q.s * vs.scale;
+    ctx.save();
+    ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2;
+    ctx.strokeRect(a.x + 1, a.y + 1, Math.max(1, ps - 2), Math.max(1, ps - 2));
+    ctx.restore();
+    state.hoverRect = { x: a.x, y: a.y, w: ps, h: ps };
+
+    var html = '<b>#' + (found + 1) + '</b> · ' + T.t('ttEdge') + ' ' + fmtSide(q.s) + ' u';
+    html += '<br>' + T.t('ttArea') + ' ' + fmtSide(q.s * q.s) + ' u²';
+    html += '<br>' + T.t('ttLevel') + ' ' + (q.depth || 0);
+    if (state.mode === 'quad') html += '<br><span style="opacity:.62">' + T.t('clickHint') + '</span>';
+    tip.innerHTML = html;
+    tip.style.left = clamp(p.x + 15, 8, state.W - 175) + 'px';
+    tip.style.top = clamp(p.y + 15, 8, state.H - 100) + 'px';
+    tip.hidden = false;
+  }
+
+  /* --------------------------- Export --------------------------- */
+  function exportPNG() {
+    if (state.phase !== 'result') { toast(T.t('noResult')); return; }
+    // If progressive drawing is unfinished, finish the remaining batches synchronously
+    if (state.renderQueue) {
+      paintRange(state.renderQueue.idx, state.drawOrder.length);
+      state.renderQueue = null;
+      finishPaint();
+    } else if (state.dirty) { regenerate(); paintBackground(); paintRange(0, state.drawOrder.length); finishPaint(); }
+    var a = document.createElement('a');
+    a.download = T.t('exportName') + '-' + state.mode + '-' + Date.now() + '.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    toast(T.t('saved'));
+  }
+
+  /* --------------------------- Size / theme / language --------------------------- */
+  function resize() {
+    state.W = Math.max(1, window.innerWidth);
+    state.H = Math.max(1, window.innerHeight);
+    state.dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(state.W * state.dpr);
+    canvas.height = Math.round(state.H * state.dpr);
+    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    state.snapshot = null;
+    requestRender(true);
+  }
+
+  function setTheme(v) {
+    state.theme = v;
+    document.documentElement.dataset.theme = v;
+    writeStore('sqr.theme', v);
+    refreshPaint();
+    state.cache.clear();
+    requestRender(true);
+  }
+  function setLang(v) {
+    T.setLang(v);
+    writeStore('sqr.lang', v);
+    state.lang = v;
+    $('langZh').classList.toggle('is-active', v === 'zh');
+    $('langEn').classList.toggle('is-active', v === 'en');
+  }
+
+  function toggleConsole(force) {
+    state.consoleOpen = force == null ? !state.consoleOpen : force;
+    $('console').classList.toggle('is-collapsed', !state.consoleOpen);
+    $('btnConsole').classList.toggle('is-active', state.consoleOpen);
+    // On phones the expanded console covers the HUD; hide it to avoid overlap.
+    document.body.classList.toggle('console-open', state.consoleOpen);
+  }
+  function openModal() {
+    // Finish the current frame (including progressive drawing) before opening the explainer, so the background pattern is complete
+    if (state.phase === 'result') {
+      if (state.dirty) { state.dirty = false; regenerate(); paintBackground(); }
+      if (state.renderQueue) {
+        paintRange(state.renderQueue.idx, state.drawOrder.length);
+        state.renderQueue = null;
+      }
+      finishPaint();
+    }
+    $('knowledge').hidden = false; state.modalOpen = true;
+  }
+  function closeModal() {
+    $('knowledge').hidden = true; state.modalOpen = false;
+    schedule();
+  }
+
+  function setRangeFill(el) {
+    var min = +el.min, max = +el.max, pct = ((+el.value - min) / (max - min)) * 100;
+    el.style.setProperty('--fill', pct.toFixed(1) + '%');
+  }
+  function syncCentersSlider() {
+    $('centers').value = clamp(state.foci.length, 1, 5);
+    $('centersVal').textContent = state.foci.length;
+    setRangeFill($('centers'));
+  }
+
+  /* --------------------------- Events --------------------------- */
+  function point(e) { return { x: e.clientX, y: e.clientY }; }
+
+  function bind() {
+    $('themeToggle').addEventListener('click', function () { setTheme(state.theme === 'dark' ? 'light' : 'dark'); });
+    $('langZh').addEventListener('click', function () { setLang('zh'); });
+    $('langEn').addEventListener('click', function () { setLang('en'); });
+    $('btnConsole').addEventListener('click', function () { toggleConsole(); });
+    $('consoleCollapse').addEventListener('click', function () { toggleConsole(false); });
+    $('btnKnowledge').addEventListener('click', openModal);
+    $('modalClose').addEventListener('click', closeModal);
+    $('modalBackdrop').addEventListener('click', closeModal);
+
+    $('algoMode').addEventListener('change', function () {
+      if (this.value === 'network') $('showLabels').checked = true;
+      state.mode = this.value;
+      updateAlgoHint();
+      if (state.phase === 'result' && state.world) runCompute({ ratio: state.world.srcRatio });
+      else $('btnCompute').classList.add('pulse');
+    });
+
+    var reparamTimer = 0;
+    function reparam(rebuild) {
+      clearTimeout(reparamTimer);
+      reparamTimer = setTimeout(function () {
+        if (rebuild) {
+          if (state.phase === 'result' && state.world) runCompute({ ratio: state.world.srcRatio, noAnim: true });
+        } else refreshResult();
+      }, 70);
+    }
+    ['centers', 'power', 'detail', 'palette', 'seed'].forEach(function (id) {
+      $(id).addEventListener('input', function () {
+        if (id === 'centers') $('centersVal').textContent = this.value;
+        if (id === 'power') $('powerVal').textContent = (+this.value).toFixed(1);
+        if (id === 'detail') $('detailVal').textContent = this.value;
+        if (id === 'centers' || id === 'palette' || id === 'seed') state.cache.clear();
+        if (id === 'centers' && state.world) {
+          state.foci = S.defaultFoci(state.world, +this.value, seed());
+        }
+        if (this.type === 'range') setRangeFill(this);
+        reparam(id === 'detail');
+      });
+    });
+    ['showGrid', 'animate', 'showLabels', 'showFoci'].forEach(function (id) {
+      $(id).addEventListener('change', function () { requestRender(true); });
+    });
+    $('reseed').addEventListener('click', function () {
+      $('seed').value = Math.floor(Math.random() * 900000) + 1000;
+      state.cache.clear(); refreshResult();
+    });
+
+    $('ratioChips').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-ratio]');
+      if (!b) return;
+      runCompute({ ratio: parseFloat(b.getAttribute('data-ratio')) });
+    });
+
+    $('btnCompute').addEventListener('click', function () { runCompute(); });
+    $('btnRedraw').addEventListener('click', redraw);
+    $('btnClear').addEventListener('click', clearAll);
+    $('btnFit').addEventListener('click', function () { if (state.phase === 'result') { fitView(); requestRender(true); } });
+    $('btnRandom').addEventListener('click', function () { runCompute({ ratio: 0.62 + Math.random() * 1.3 }); });
+    $('btnExport').addEventListener('click', exportPNG);
+    $('zoomIn').addEventListener('click', function () { zoomBy(1.6); preview(); requestRender(true); });
+    $('zoomOut').addEventListener('click', function () { zoomBy(1 / 1.6); preview(); requestRender(true); });
+    $('zoomFit').addEventListener('click', function () { fitView(); requestRender(true); });
+
+    /* Pointer handling: one finger draws/pans, two fingers pinch-zoom.
+       Camera maths stays in BigDec so deep zoom never drifts on touch. */
+    canvas.addEventListener('pointerdown', function (e) {
+      if (state.modalOpen || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      canvas.setPointerCapture(e.pointerId);
+      var p = point(e);
+      state.touches.set(e.pointerId, p);
+      if (state.touches.size === 2) {
+        var q = Array.from(state.touches.values());
+        state.pinch = {
+          dist: Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y),
+          cx: (q[0].x + q[1].x) / 2, cy: (q[0].y + q[1].y) / 2
+        };
+        // A second finger cancels any in-flight draw/pan gesture.
+        state.pointer = null; state.drag = null;
+        $('tooltip').hidden = true;
+        return;
+      }
+      if (state.touches.size > 2) return;
+      var mode = (state.phase === 'select' || e.shiftKey) ? 'draw' : 'pan';
+      state.pointer = {
+        x0: p.x, y0: p.y, mode: mode, moved: false,
+        startView: { cx: state.view.cx, cy: state.view.cy, scale: state.view.scale }
+      };
+      if (mode === 'draw') {
+        state.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        if (state.phase === 'result') {
+          state.phase = 'select'; state.blocks = []; state.snapshot = null;
+          state.renderQueue = null; state.anim = null; state.hoverRect = null;
+          showHint();
+          emptyHUD();
+        }
+        $('tooltip').hidden = true;
+      }
+    });
+
+    canvas.addEventListener('pointermove', function (e) {
+      var p = point(e);
+      if (state.touches.has(e.pointerId)) state.touches.set(e.pointerId, p);
+      if (state.pinch && state.touches.size >= 2) {
+        var q = Array.from(state.touches.values());
+        var d = Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y);
+        var cx = (q[0].x + q[1].x) / 2, cy = (q[0].y + q[1].y) / 2;
+        if (state.phase === 'result' && state.pinch.dist > 1 && d > 1) {
+          zoomAt(d / state.pinch.dist, state.pinch.cx, state.pinch.cy);
+          var s = scaleBD();
+          state.view.cx = BD.sub(state.view.cx, BD.div(BD.from(cx - state.pinch.cx), s));
+          state.view.cy = BD.sub(state.view.cy, BD.div(BD.from(cy - state.pinch.cy), s));
+          syncView();
+          preview();
+          state.pinch.dist = d; state.pinch.cx = cx; state.pinch.cy = cy;
+          clearTimeout(state.wheelTimer);
+          state.wheelTimer = setTimeout(function () { requestRender(true); }, 130);
+        }
+        return;
+      }
+      if (state.pointer) {
+        var dx = p.x - state.pointer.x0, dy = p.y - state.pointer.y0;
+        if (state.pointer.mode === 'pan') {
+          if (!state.pointer.moved && Math.hypot(dx, dy) < 3) return;
+          state.pointer.moved = true;
+          var s0 = state.pointer.startView;
+          var sB = BD.from(s0.scale);
+          state.view.cx = BD.sub(s0.cx, BD.div(BD.from(dx), sB));
+          state.view.cy = BD.sub(s0.cy, BD.div(BD.from(dy), sB));
+          syncView();
+          canvas.style.cursor = 'grabbing';
+          preview();
+        } else {
+          state.drag = { x0: state.pointer.x0, y0: state.pointer.y0, x1: p.x, y1: p.y };
+          paintSelect();
+        }
+      } else if (e.pointerType === 'mouse') {
+        handleHover(p);          // tooltips are mouse-only; hidden on touch
+      }
+    });
+
+    canvas.addEventListener('pointerup', function (e) {
+      state.touches.delete(e.pointerId);
+      if (state.pinch) {
+        if (state.touches.size < 2) { state.pinch = null; requestRender(true); }
+        return;
+      }
+      if (!state.pointer) return;
+      if (state.pointer.mode === 'pan') {
+        canvas.style.cursor = 'grab';
+        if (state.pointer.moved) requestRender(true);
+      } else {
+        var d = state.drag;
+        state.drag = null;
+        var r = d ? normDrag(d) : null;
+        if (r && r.w >= 40 && r.h >= 40) {
+          state.rectN = r;
+          hideHint();
+          $('btnCompute').classList.add('pulse');
+        } else {
+          state.rectN = null;
+          showHint();
+          if (d) toast(T.t('minWarn'));
+        }
+        paintSelect();
+      }
+      state.pointer = null;
+    });
+    canvas.addEventListener('pointerleave', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      $('tooltip').hidden = true;
+      canvas.style.cursor = state.phase === 'result' ? 'grab' : 'crosshair';
+    });
+    canvas.addEventListener('pointercancel', function (e) {
+      state.touches.delete(e.pointerId);
+      if (state.touches.size < 2) state.pinch = null;
+      state.pointer = null; state.drag = null;
+      canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (state.phase !== 'result') return;
+      var p = point(e);
+      zoomAt(Math.exp(-e.deltaY * 0.0014), p.x, p.y);
+      preview();
+      clearTimeout(state.wheelTimer);
+      state.wheelTimer = setTimeout(function () { requestRender(true); }, 130);
+    }, { passive: false });
+
+    canvas.addEventListener('dblclick', function (e) {
+      if (state.phase !== 'result' || state.mode !== 'quad') return;
+      var p = point(e), w = toWorld(p.x, p.y);
+      if (state.foci.length >= 6) { toast(T.t('focusMax')); return; }
+      state.foci.push({ x: clamp(w.x, 0, state.world.gw), y: clamp(w.y, 0, state.world.gh) });
+      syncCentersSlider();
+      refreshResult();
+      toast(T.t('focusAdded'));
+    });
+    canvas.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      if (state.phase !== 'result' || state.mode !== 'quad' || state.foci.length <= 1) return;
+      state.foci.pop();
+      syncCentersSlider();
+      refreshResult();
+      toast(T.t('focusRemoved'));
+    });
+
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target && e.target.tagName || '').toLowerCase();
+      if (e.key === 'Escape') {
+        if (state.modalOpen) closeModal();
+        else toggleConsole(false);
+      } else if (e.key === 'Enter' && tag !== 'input' && tag !== 'select' && tag !== 'button') {
+        runCompute();
+      } else if ((e.key === 'f' || e.key === 'F') && tag !== 'input') {
+        fitView(); requestRender(true);
+      } else if ((e.key === 'r' || e.key === 'R') && tag !== 'input') {
+        redraw();
+      } else if (e.key === '+' || e.key === '=') {
+        zoomBy(1.6); preview(); requestRender(true);
+      } else if (e.key === '-') {
+        zoomBy(1 / 1.6); preview(); requestRender(true);
+      }
+    });
+
+    document.addEventListener('i18n:change', function () {
+      $('statPrecision').textContent = T.t('precisionValue');
+      updateAlgoHint();
+      updateHUD(0);
+      if (state.drag) paintSelectFrame(normDrag(state.drag));
+    });
+
+    window.addEventListener('resize', resize);
+  }
+
+  function redraw() {
+    state.phase = 'select';
+    state.blocks = []; state.colors = []; state.drawOrder = [];
+    state.world = null; state.snapshot = null; state.renderQueue = null;
+    state.anim = null; state.hoverRect = null; state.drag = null; state.pointer = null;
+    showHint(); emptyHUD();
+    $('tooltip').hidden = true;
+    requestRender(true);
+  }
+  function clearAll() {
+    state.rectN = null;
+    redraw();
+    $('btnCompute').classList.remove('pulse');
+  }
+
+  /* --------------------------- Startup --------------------------- */
+  function init() {
+    state.theme = readStore('sqr.theme', 'dark') === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = state.theme;
+    state.lang = readStore('sqr.lang', 'zh') === 'en' ? 'en' : 'zh';
+    T.setLang(state.lang);
+    $('statPrecision').textContent = T.t('precisionValue');
+    $('langZh').classList.toggle('is-active', state.lang === 'zh');
+    $('langEn').classList.toggle('is-active', state.lang === 'en');
+    ['centers', 'power', 'detail'].forEach(function (id) { setRangeFill($(id)); });
+    $('powerVal').textContent = (+$('power').value).toFixed(1);
+    $('centersVal').textContent = $('centers').value;
+    $('detailVal').textContent = $('detail').value;
+    refreshPaint();
+    resize();
+    bind();
+    updateAlgoHint();
+    emptyHUD();
+
+    // On narrow / tall phone screens keep the canvas unobstructed by default;
+    // the glass console opens from the top bar on demand.
+    if (window.innerWidth <= 640) toggleConsole(false);
+
+    // Demo/share entry point (the default is still an empty infinite canvas):
+    // ?demo=1&mode=quad|euclid|network&centers=3&theme=dark|light&lang=zh|en&zoom=8&ratio=1.5
+    var q = new URLSearchParams(location.search);
+    if (q.get('demo')) {
+      if (q.get('theme')) setTheme(q.get('theme') === 'light' ? 'light' : 'dark');
+      if (q.get('lang')) setLang(q.get('lang') === 'en' ? 'en' : 'zh');
+      if (q.get('mode')) $('algoMode').value = q.get('mode');
+      if (q.get('centers')) { $('centers').value = q.get('centers'); $('centersVal').textContent = q.get('centers'); setRangeFill($('centers')); }
+      if (q.get('palette')) $('palette').value = q.get('palette');
+      $('animate').checked = false;
+      // A tall phone viewport is best served by a portrait-oriented world;
+      // an explicit ?ratio= always wins.
+      var portrait = window.innerWidth <= 640 && window.innerHeight > window.innerWidth;
+      var demoRatio = parseFloat(q.get('ratio')) || (portrait ? 0.62 : 1.5);
+      runCompute({ ratio: demoRatio, noAnim: true });
+      if (portrait && !q.get('zoom')) {
+        state.view.scale *= 1.16;
+        syncView(); updateZoomLabel(); requestRender(true);
+      }
+      if (q.get('zoom')) {
+        var z = parseFloat(q.get('zoom'));
+        var f = state.foci[0] || { x: state.world.gw / 2, y: state.world.gh / 2 };
+        state.view.cx = BD.from(f.x); state.view.cy = BD.from(f.y);
+        state.view.scale *= z;
+        syncView();
+        updateZoomLabel();
+        requestRender(true);
+      }
+      if (q.get('console') === '0') toggleConsole(false);
+      if (q.get('console') === '1') toggleConsole(true);
+      if (q.get('modal')) openModal();
+    }
+  }
+
+  init();
+})();
