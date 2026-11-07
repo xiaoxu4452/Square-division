@@ -70,7 +70,26 @@
     if (v >= 0.1) return v.toFixed(2);
     return v.toExponential(1);
   }
-  function seed() { return parseInt($('seed').value, 10) || 1; }
+  /* Seed hygiene: every hash in the kernel mixes the seed with Math.imul, so
+     the value is folded through ToInt32. Anything outside the signed 32-bit
+     range (1e300, "999999999999999999999", Infinity) would collapse to 0 and
+     make every tile share one colour/jitter value. Keep the input inside
+     [1, 2^31 - 2] instead of silently degrading. */
+  var SEED_MIN = 1;
+  var SEED_MAX = 2147483646;
+  function clampSeed(v) {
+    var n = Math.floor(Number(v));
+    if (!isFinite(n)) return SEED_MIN;
+    return Math.min(SEED_MAX, Math.max(SEED_MIN, n));
+  }
+  function seed() { return clampSeed($('seed').value); }
+
+  /** Rewrite the field when the typed value is out of range or not a number. */
+  function normalizeSeedField() {
+    var el = $('seed'), v = clampSeed(el.value);
+    if (el.value !== String(v)) el.value = v;
+    return v;
+  }
 
   /* ------------------ Camera: BigDec high-precision coordinates ------------------ */
   function scaleBD() { return BD.from(state.view.scale); }
@@ -111,12 +130,50 @@
   }
   function toScreen(wx, wy) { return { x: screenX(wx), y: screenY(wy) }; }
 
-  function fitView() {
-    var w = state.world; if (!w) return;
+  /* The world is finite, so the camera is finite too: zoom may go arbitrarily
+     deep, but the viewport can never be panned off the rectangle. When the
+     world is smaller than the viewport on an axis (only possible at fit scale)
+     that axis is locked to the centre, which is exactly what a map does. */
+  var ZOOM_OUT_FLOOR = 1;           // relative to the fit scale: fit is the widest view
+
+  function clampCamera() {
+    var w = state.world; if (!w) return false;
+    var v = state.view, hit = false;
+    var halfW = state.W / (2 * v.scale), halfH = state.H / (2 * v.scale);
+    var midX = BD.from(w.gw / 2), midY = BD.from(w.gh / 2);
+
+    if (w.gw <= halfW * 2) {
+      if (BD.cmp(v.cx, midX) !== 0) { v.cx = midX; hit = true; }
+    } else {
+      var loX = BD.from(halfW), hiX = BD.sub(BD.from(w.gw), BD.from(halfW));
+      if (BD.cmp(v.cx, loX) < 0) { v.cx = loX; hit = true; }
+      else if (BD.cmp(v.cx, hiX) > 0) { v.cx = hiX; hit = true; }
+    }
+    if (w.gh <= halfH * 2) {
+      if (BD.cmp(v.cy, midY) !== 0) { v.cy = midY; hit = true; }
+    } else {
+      var loY = BD.from(halfH), hiY = BD.sub(BD.from(w.gh), BD.from(halfH));
+      if (BD.cmp(v.cy, loY) < 0) { v.cy = loY; hit = true; }
+      else if (BD.cmp(v.cy, hiY) > 0) { v.cy = hiY; hit = true; }
+    }
+    return hit;
+  }
+
+  function minScale() {
+    var f = state.view.fitScale;
+    return f > 0 ? f * ZOOM_OUT_FLOOR : 1e-5;
+  }
+
+  function fitScaleFor(w) {
     // Portrait phones have very little horizontal room: use almost the full
     // width so the tiling is not reduced to a thin band on a tall screen.
     var margin = (state.W <= 640 && state.H > state.W) ? 0.99 : 0.94;
-    var s = Math.min(state.W * margin / w.gw, state.H * margin / w.gh);
+    return Math.min(state.W * margin / w.gw, state.H * margin / w.gh);
+  }
+
+  function fitView() {
+    var w = state.world; if (!w) return;
+    var s = fitScaleFor(w);
     var v = state.view;
     v.cx = BD.from(w.gw / 2); v.cy = BD.from(w.gh / 2);
     v.scale = s; v.fitScale = s;
@@ -131,11 +188,12 @@
     py = py == null ? state.H / 2 : py;
     var s1 = scaleBD(), dx = BD.from(px - state.W / 2), dy = BD.from(py - state.H / 2);
     var ax = BD.add(v.cx, BD.div(dx, s1)), ay = BD.add(v.cy, BD.div(dy, s1));
-    v.scale = clamp(v.scale * factor, 1e-5, 1e12);
+    v.scale = clamp(v.scale * factor, minScale(), 1e12);
     var s2 = scaleBD();
     var bx = BD.add(v.cx, BD.div(dx, s2)), by = BD.add(v.cy, BD.div(dy, s2));
     v.cx = BD.add(v.cx, BD.sub(ax, bx));
     v.cy = BD.add(v.cy, BD.sub(ay, by));
+    clampCamera();
     syncView();
     updateZoomLabel();
   }
@@ -649,6 +707,11 @@
 
   /* --------------------------- Size / theme / language --------------------------- */
   function resize() {
+    // Keep the "fit is the widest view" invariant when the viewport changes:
+    // a frame that was fitted stays fitted, and a frame that was zoomed in
+    // keeps its absolute magnification.
+    var wasFit = state.view.fitScale > 0 &&
+                 Math.abs(state.view.scale - state.view.fitScale) < state.view.fitScale * 0.002;
     state.W = Math.max(1, window.innerWidth);
     state.H = Math.max(1, window.innerHeight);
     state.dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -656,6 +719,14 @@
     canvas.height = Math.round(state.H * state.dpr);
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
     state.snapshot = null;
+    if (state.world && state.phase === 'result') {
+      var f = fitScaleFor(state.world);
+      state.view.fitScale = f;
+      if (wasFit || state.view.scale < f) state.view.scale = f;
+      clampCamera();
+      syncView();
+      updateZoomLabel();
+    }
     requestRender(true);
   }
 
@@ -785,6 +856,10 @@
       $('seed').value = Math.floor(Math.random() * 900000) + 1000;
       state.cache.clear(); refreshResult();
     });
+    // Out-of-range or malformed seeds are rewritten on commit/blur so the
+    // field always shows the value that is actually used. Regeneration is
+    // already queued by the input handler above, so this stays cheap.
+    $('seed').addEventListener('change', normalizeSeedField);
 
     $('ratioChips').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-ratio]');
@@ -859,6 +934,7 @@
           var s = scaleBD();
           state.view.cx = BD.sub(state.view.cx, BD.div(BD.from(cx - state.pinch.cx), s));
           state.view.cy = BD.sub(state.view.cy, BD.div(BD.from(cy - state.pinch.cy), s));
+          clampCamera();
           syncView();
           preview();
           state.pinch.dist = d; state.pinch.cx = cx; state.pinch.cy = cy;
@@ -884,6 +960,7 @@
           var sB = BD.from(s0.scale);
           state.view.cx = BD.sub(s0.cx, BD.div(BD.from(dx), sB));
           state.view.cy = BD.sub(s0.cy, BD.div(BD.from(dy), sB));
+          clampCamera();
           syncView();
           canvas.style.cursor = 'grabbing';
           preview();
@@ -1053,6 +1130,7 @@
       if (q.get('order')) { $('order').value = q.get('order'); $('orderVal').textContent = q.get('order'); setRangeFill($('order')); }
       if (q.get('radius')) { $('radius').value = q.get('radius'); $('radiusVal').textContent = (+q.get('radius')).toFixed(2); setRangeFill($('radius')); }
       if (q.get('palette')) $('palette').value = q.get('palette');
+      if (q.get('seed') !== null) $('seed').value = clampSeed(q.get('seed'));
       $('animate').checked = false;
       // A tall phone viewport is best served by a portrait-oriented world;
       // an explicit ?ratio= always wins.
@@ -1067,7 +1145,8 @@
         var z = parseFloat(q.get('zoom'));
         var f = state.foci[0] || { x: state.world.gw / 2, y: state.world.gh / 2 };
         state.view.cx = BD.from(f.x); state.view.cy = BD.from(f.y);
-        state.view.scale *= z;
+        state.view.scale = Math.max(state.view.fitScale, state.view.scale * z);
+        clampCamera();
         syncView();
         updateZoomLabel();
         requestRender(true);
@@ -1117,6 +1196,31 @@
         } catch (e) { /* session storage may be disabled */ }
       }
     })();
+
+    /* Native diagnostics for the browser test suite; it only exposes read-only
+       accessors and is inert unless ?debug=1 is present. */
+    if (q.get('debug') === '1') {
+      window.SquaringLab = {
+        view: function () {
+          var v = state.view;
+          return { cx: BD.toNumber(v.cx), cy: BD.toNumber(v.cy), scale: v.scale, fitScale: v.fitScale };
+        },
+        world: function () { var w = state.world; return w ? { gw: w.gw, gh: w.gh } : null; },
+        seed: seed,
+        limits: function () {
+          var w = state.world; if (!w) return null;
+          var v = state.view, hw = state.W / (2 * v.scale), hh = state.H / (2 * v.scale);
+          var lockX = w.gw <= hw * 2, lockY = w.gh <= hh * 2;
+          return {
+            halfW: hw, halfH: hh,
+            cxMin: lockX ? w.gw / 2 : hw, cxMax: lockX ? w.gw / 2 : w.gw - hw,
+            cyMin: lockY ? w.gh / 2 : hh, cyMax: lockY ? w.gh / 2 : w.gh - hh,
+            lockX: lockX, lockY: lockY
+          };
+        },
+        phase: function () { return state.phase; }
+      };
+    }
   }
 
   init();

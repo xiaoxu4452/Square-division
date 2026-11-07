@@ -199,6 +199,8 @@ All source comments are written in English; the user-facing Chinese strings live
 | Compute | `Enter` or the **Compute** button | **Compute** button |
 | Close overlays | `Escape` | Close button |
 
+The camera is finite even though the zoom is not: the viewport can never be dragged off the rectangle (it stops flush with the border, and an axis whose world extent is smaller than the screen is pinned to the centre), while zooming out stops at the fitted frame. Zooming in remains effectively unbounded — the scale ceiling is `10¹² ×` the fit scale.
+
 ### Console parameters
 
 | Parameter | Meaning |
@@ -209,7 +211,7 @@ All source comments are written in English; the user-facing Chinese strings live
 | Focus strength | Exponent `power` of the size field |
 | Macro precision | `D` in `L = 2^D` |
 | Palette | Spectrum / Sky / Warm |
-| Random seed | Deterministic colour and focus layout |
+| Random seed | Deterministic colour and focus layout; integer `1 – 2147483646`, values outside the range are clamped |
 | Subdivision order | Core width / refinement budget, active in all three modes (0–6) |
 | Ratio presets | `1:1`, `3:2`, `16:9`, golden ratio, `2:3`, … |
 | Display options | Grid, animation, side labels, focus markers |
@@ -234,6 +236,8 @@ Useful for sharing a state or for automated screenshots:
 | `console` | `console=0` | Start with the console collapsed |
 | `modal` | `modal=1` | Open the explainer on load |
 | `radius` | `radius=0.8` | Dense-centre influence radius |
+| `seed` | `seed=2026` | Random seed, clamped to `1 – 2147483646` |
+| `debug` | `debug=1` | Expose the read-only `window.SquaringLab` diagnostics used by the browser tests |
 | `coi` | `coi=1` | Optional COOP/COEP injection for shared-memory WASM |
 | `pwa` | `pwa=1` | Start URL used by the installed app |
 
