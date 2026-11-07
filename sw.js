@@ -10,7 +10,7 @@
  */
 'use strict';
 
-const VERSION = 'sqr-v3';
+const VERSION = 'sqr-v4';
 const CACHE = VERSION + '-static';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
