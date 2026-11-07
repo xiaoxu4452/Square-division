@@ -132,9 +132,10 @@
 
   /* The world is finite, so the camera is finite too: zoom may go arbitrarily
      deep, but the viewport can never be panned off the rectangle. When the
-     world is smaller than the viewport on an axis (only possible at fit scale)
-     that axis is locked to the centre, which is exactly what a map does. */
-  var ZOOM_OUT_FLOOR = 1;           // relative to the fit scale: fit is the widest view
+     world is smaller than the viewport on an axis (possible once the canvas is
+     expanded past the fitted frame) that axis is locked to the centre, which is
+     exactly what a map does. */
+  var ZOOM_OUT_FACTOR = 25;         // the canvas may expand to 25x the fitted span
 
   function clampCamera() {
     var w = state.world; if (!w) return false;
@@ -161,7 +162,7 @@
 
   function minScale() {
     var f = state.view.fitScale;
-    return f > 0 ? f * ZOOM_OUT_FLOOR : 1e-5;
+    return f > 0 ? f / ZOOM_OUT_FACTOR : 1e-5;
   }
 
   function fitScaleFor(w) {
@@ -707,9 +708,9 @@
 
   /* --------------------------- Size / theme / language --------------------------- */
   function resize() {
-    // Keep the "fit is the widest view" invariant when the viewport changes:
-    // a frame that was fitted stays fitted, and a frame that was zoomed in
-    // keeps its absolute magnification.
+    // Keep the zoom relative to the frame when the viewport changes: a frame
+    // that was fitted stays fitted, an expanded canvas stays expanded, and a
+    // zoomed-in frame keeps its absolute magnification.
     var wasFit = state.view.fitScale > 0 &&
                  Math.abs(state.view.scale - state.view.fitScale) < state.view.fitScale * 0.002;
     state.W = Math.max(1, window.innerWidth);
@@ -722,7 +723,7 @@
     if (state.world && state.phase === 'result') {
       var f = fitScaleFor(state.world);
       state.view.fitScale = f;
-      if (wasFit || state.view.scale < f) state.view.scale = f;
+      state.view.scale = wasFit ? f : Math.max(state.view.scale, f / ZOOM_OUT_FACTOR);
       clampCamera();
       syncView();
       updateZoomLabel();
@@ -1145,7 +1146,7 @@
         var z = parseFloat(q.get('zoom'));
         var f = state.foci[0] || { x: state.world.gw / 2, y: state.world.gh / 2 };
         state.view.cx = BD.from(f.x); state.view.cy = BD.from(f.y);
-        state.view.scale = Math.max(state.view.fitScale, state.view.scale * z);
+        state.view.scale = Math.max(minScale(), state.view.scale * z);
         clampCamera();
         syncView();
         updateZoomLabel();

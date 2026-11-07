@@ -199,7 +199,7 @@ All source comments are written in English; the user-facing Chinese strings live
 | Compute | `Enter` or the **Compute** button | **Compute** button |
 | Close overlays | `Escape` | Close button |
 
-The camera is finite even though the zoom is not: the viewport can never be dragged off the rectangle (it stops flush with the border, and an axis whose world extent is smaller than the screen is pinned to the centre), while zooming out stops at the fitted frame. Zooming in remains effectively unbounded — the scale ceiling is `10¹² ×` the fit scale.
+The camera is finite even though the zoom is not: the viewport can never be dragged off the rectangle (it stops flush with the border, and an axis whose world extent is smaller than the screen is pinned to the centre). Zooming out expands the canvas around the rectangle up to **25× the fitted span** (4 % of the fit scale); zooming in remains effectively unbounded, with a `10¹² ×` ceiling.
 
 ### Console parameters
 
