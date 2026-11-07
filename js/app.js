@@ -161,12 +161,10 @@
     state.mode = $('algoMode').value;
     state.foci = S.defaultFoci(world, +$('centers').value, seed());
     state.cache.clear();
+    // Classic tilings are generated per frame (viewport-driven LOD), so no
+    // static block list has to be precomputed or kept in memory.
     state.staticBlocks = null;
-    if (state.mode !== 'quad') {
-      var st = S.staticTiling(state.mode, world);
-      state.staticBlocks = st.blocks;
-      state.staticMeta = st.meta;
-    }
+    state.staticMeta = null;
     state.phase = 'result';
     state.hover = -1; state.hoverRect = null;
     state.snapshot = null; state.renderQueue = null;
@@ -211,14 +209,13 @@
     if (state.mode === 'quad') {
       blocks = S.generate(w, v, opts);
     } else {
-      blocks = (state.staticBlocks || []).filter(function (b) {
-        return b.x < v.x1 && b.y < v.y1 && b.x + b.s > v.x0 && b.y + b.s > v.y0;
-      }).map(function (b) {
-        return {
-          x: b.x - v.ox, y: b.y - v.oy, s: b.s, depth: b.depth || 0,
-          label: b.label, kind: b.kind, wx: b.x, wy: b.y
-        };
+      // Euclidean / Smith-network tilings: exact coverage of the whole
+      // rectangle, LOD-driven ladder subdivision, arbitrary square counts.
+      var st = S.staticTiling(state.mode, w, {
+        view: v, order: +$('order').value, maxBlocks: 60000
       });
+      blocks = st.blocks;
+      state.staticMeta = st.meta;
     }
     var localView = { x0: -v.hw, y0: -v.hh, x1: v.hw, y1: v.hh, scale: v.scale };
     var colors = S.colorize(blocks, state.cache, {
@@ -329,32 +326,27 @@
       if (ps <= 0 || sx > W + 2 || sy > H + 2 || sx + ps < -2 || sy + ps < -2) continue;
 
       // Reuse the integer-grid hash from the colouring stage: even at tiny scales neighbouring tiles will not collide into the same jitter value
+      // Muted fill: only a few degrees of hue jitter, no fluorescent chroma,
+      // no radial shading. The tile itself stays a flat, quiet colour.
       var j = col.j == null ? 0.5 : col.j;
-      var h = (col.h + (j - 0.5) * 12 + 360) % 360;
-      var sat = clamp(col.s + (j - 0.5) * 9, 52, 95);
-      var l = clamp(col.l + (b.depth || 0) * 0.1 + (j - 0.5) * 5, 32, 76);
+      var h = (col.h + (j - 0.5) * 5 + 360) % 360;
+      var sat = clamp(col.s + (j - 0.5) * 4, 22, 48);
+      var l = clamp(col.l + (j - 0.5) * 3, 36, 72);
       ctx.fillStyle = 'hsl(' + h.toFixed(1) + ',' + sat.toFixed(1) + '%,' + l.toFixed(1) + '%)';
       // +0.45px removes sub-pixel seams (without visible overlap)
       ctx.fillRect(sx, sy, ps + 0.45, ps + 0.45);
 
-      if (ps > 7) {
-        var lw = Math.min(1.5, Math.max(0.6, ps * 0.032));
-        ctx.strokeStyle = 'hsl(' + h + ',' + sat + '%,' + Math.max(16, l - 20) + '%)';
-        ctx.lineWidth = lw;
-        ctx.strokeRect(sx + lw / 2, sy + lw / 2, Math.max(0, ps - lw), Math.max(0, ps - lw));
+      if (ps > 9) {
+        ctx.strokeStyle = 'hsla(' + h + ',' + sat + '%,' + Math.max(18, l - 14) + '%,.42)';
+        ctx.lineWidth = 0.7;
+        ctx.strokeRect(sx + 0.35, sy + 0.35, Math.max(0, ps - 0.7), Math.max(0, ps - 0.7));
       }
-      if (ps > 36) {
-        ctx.fillStyle = 'hsla(' + h + ',' + sat + '%,' + Math.min(90, l + 17) + '%,.5)';
-        var e = Math.min(1.5, ps * 0.035);
+      if (ps > 44) {
+        // A barely visible bevel keeps large tiles from looking like flat ink.
+        ctx.fillStyle = 'hsla(' + h + ',' + sat + '%,' + Math.min(88, l + 9) + '%,.16)';
+        var e = Math.min(1.2, ps * 0.02);
         ctx.fillRect(sx, sy, ps, e);
         ctx.fillRect(sx, sy, e, ps);
-      }
-      if (ps > 120) {
-        var g = ctx.createRadialGradient(sx + ps * 0.3, sy + ps * 0.24, ps * 0.04, sx + ps * 0.5, sy + ps * 0.5, ps * 0.86);
-        g.addColorStop(0, 'hsla(' + h + ',' + sat + '%,' + Math.min(92, l + 20) + '%,.15)');
-        g.addColorStop(1, 'hsla(' + h + ',' + sat + '%,' + Math.max(10, l - 24) + '%,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(sx, sy, ps, ps);
       }
       if (labels && ps > 46) {
         var label = b.label != null ? String(b.label) : fmtSide(b.s);
@@ -370,18 +362,15 @@
   function finishPaint() {
     var w = state.world, v = state.view;
     if (!w) return;
-    // World border (sky-blue gradient)
+    // A single restrained stroke marks the world boundary.
     var a = toScreen(0, 0), b2 = toScreen(w.gw, w.gh);
-    var grad = ctx.createLinearGradient(a.x, a.y, b2.x, b2.y);
-    grad.addColorStop(0, '#7dd3fc'); grad.addColorStop(0.5, '#38bdf8'); grad.addColorStop(1, '#4f6ef7');
     ctx.save();
-    ctx.strokeStyle = grad; ctx.lineWidth = 1.6;
-    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.6;
     ctx.strokeRect(a.x, a.y, b2.x - a.x, b2.y - a.y);
     ctx.restore();
 
     if ($('showFoci').checked && state.mode === 'quad') paintFoci();
-    if (state.mode === 'network' && state.staticMeta && state.staticMeta.inset) paintInset();
     if (state.drag) paintSelectFrame(normDrag(state.drag));
     saveSnapshot();
   }
@@ -392,32 +381,17 @@
       if (p.x < -40 || p.y < -40 || p.x > state.W + 40 || p.y > state.H + 40) return;
       ctx.save();
       var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26);
-      g.addColorStop(0, 'rgba(56,189,248,.5)');
-      g.addColorStop(1, 'rgba(56,189,248,0)');
+      g.addColorStop(0, 'rgba(146,178,205,.28)');
+      g.addColorStop(1, 'rgba(146,178,205,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, 26, 0, TAU); ctx.fill();
-      ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 1.6;
+      ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, TAU); ctx.stroke();
-      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, TAU); ctx.fill();
+      ctx.fillStyle = state.paint.accent; ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, TAU); ctx.fill();
       ctx.font = '700 10px ui-monospace, Consolas, monospace';
-      ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = state.paint.accent; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText(String(i + 1), p.x + 12, p.y - 9);
       ctx.restore();
     });
-  }
-
-  function paintInset() {
-    var m = state.staticMeta.inset;
-    var a = toScreen(m.x, m.y), b = toScreen(m.x + m.w, m.y + m.h);
-    ctx.save();
-    ctx.setLineDash([6, 5]);
-    ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1;
-    ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
-    ctx.setLineDash([]);
-    ctx.font = '600 11px ui-monospace, Consolas, monospace';
-    ctx.fillStyle = state.paint.accent;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-    ctx.fillText(state.staticMeta.W0 + '×' + state.staticMeta.H0 + ' · PERFECT', a.x + 4, a.y - 6);
-    ctx.restore();
   }
 
   function saveSnapshot() {
@@ -464,7 +438,7 @@
 
   function paintSelectFrame(r) {
     ctx.save();
-    ctx.fillStyle = state.theme === 'dark' ? 'rgba(56,189,248,.10)' : 'rgba(14,165,233,.10)';
+    ctx.fillStyle = state.theme === 'dark' ? 'rgba(146,178,205,.09)' : 'rgba(69,117,155,.09)';
     ctx.fillRect(r.x, r.y, r.w, r.h);
     ctx.setLineDash([7, 5]);
     ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1.6;
@@ -509,11 +483,16 @@
     $('statTime').textContent = ms.toFixed(0) + ' ms';
     var line;
     if (state.mode === 'euclid' && state.staticMeta) {
-      line = T.t('metaEuclid', { cf: state.staticMeta.cf.join(', '), steps: state.staticMeta.cf.length });
+      line = T.t('metaEuclid', {
+        cf: state.staticMeta.cf.join(', '), steps: state.staticMeta.cf.length,
+        count: m.count.toLocaleString('en-US'), order: state.staticMeta.order
+      });
     } else if (state.mode === 'network' && state.staticMeta) {
       line = T.t('metaNetwork', {
         ratio: state.staticMeta.ratio, steps: state.staticMeta.steps,
-        sides: state.staticMeta.sides.slice().sort(function (a, b) { return a - b; }).join(', ')
+        sides: state.staticMeta.sides.slice().sort(function (a, b) { return a - b; }).join(', '),
+        cells: state.staticMeta.cells,
+        count: m.count.toLocaleString('en-US'), order: state.staticMeta.order
       });
     } else {
       line = T.t('metaQuad', {
@@ -529,6 +508,8 @@
     var el = $('algoHint');
     el.setAttribute('data-i18n', key);
     el.textContent = T.t(key);
+    // The subdivision order only affects the two classic tilings.
+    $('order').disabled = state.mode === 'quad';
   }
 
   function hideHint() { $('stageHint').classList.add('is-hidden'); }
@@ -561,7 +542,7 @@
     var a = { x: q.x * vs.scale + state.W / 2 - vs.offX, y: q.y * vs.scale + state.H / 2 - vs.offY };
     var ps = q.s * vs.scale;
     ctx.save();
-    ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2;
+    ctx.strokeStyle = state.paint.accent; ctx.lineWidth = 1.6;
     ctx.strokeRect(a.x + 1, a.y + 1, Math.max(1, ps - 2), Math.max(1, ps - 2));
     ctx.restore();
     state.hoverRect = { x: a.x, y: a.y, w: ps, h: ps };
@@ -604,6 +585,15 @@
     requestRender(true);
   }
 
+  /* The essay is a self-contained bilingual document rendered in an iframe;
+     language and theme are passed through the query string so it also works
+     from file:// without cross-origin messaging. */
+  function syncEssay() {
+    var f = $('essayFrame');
+    if (!f) return;
+    var src = 'essay.' + (state.lang === 'en' ? 'en' : 'zh') + '.html?theme=' + state.theme;
+    if (f.getAttribute('src') !== src) f.setAttribute('src', src);
+  }
   function setTheme(v) {
     state.theme = v;
     document.documentElement.dataset.theme = v;
@@ -611,6 +601,7 @@
     refreshPaint();
     state.cache.clear();
     requestRender(true);
+    if (state.modalOpen) syncEssay();
   }
   function setLang(v) {
     T.setLang(v);
@@ -618,6 +609,7 @@
     state.lang = v;
     $('langZh').classList.toggle('is-active', v === 'zh');
     $('langEn').classList.toggle('is-active', v === 'en');
+    if (state.modalOpen) syncEssay();
   }
 
   function toggleConsole(force) {
@@ -638,6 +630,7 @@
       finishPaint();
     }
     $('knowledge').hidden = false; state.modalOpen = true;
+    syncEssay();
   }
   function closeModal() {
     $('knowledge').hidden = true; state.modalOpen = false;
@@ -684,11 +677,12 @@
         } else refreshResult();
       }, 70);
     }
-    ['centers', 'power', 'detail', 'palette', 'seed'].forEach(function (id) {
+    ['centers', 'power', 'detail', 'order', 'palette', 'seed'].forEach(function (id) {
       $(id).addEventListener('input', function () {
         if (id === 'centers') $('centersVal').textContent = this.value;
         if (id === 'power') $('powerVal').textContent = (+this.value).toFixed(1);
         if (id === 'detail') $('detailVal').textContent = this.value;
+        if (id === 'order') $('orderVal').textContent = this.value;
         if (id === 'centers' || id === 'palette' || id === 'seed') state.cache.clear();
         if (id === 'centers' && state.world) {
           state.foci = S.defaultFoci(state.world, +this.value, seed());
@@ -917,10 +911,11 @@
     $('statPrecision').textContent = T.t('precisionValue');
     $('langZh').classList.toggle('is-active', state.lang === 'zh');
     $('langEn').classList.toggle('is-active', state.lang === 'en');
-    ['centers', 'power', 'detail'].forEach(function (id) { setRangeFill($(id)); });
+    ['centers', 'power', 'detail', 'order'].forEach(function (id) { setRangeFill($(id)); });
     $('powerVal').textContent = (+$('power').value).toFixed(1);
     $('centersVal').textContent = $('centers').value;
     $('detailVal').textContent = $('detail').value;
+    $('orderVal').textContent = $('order').value;
     refreshPaint();
     resize();
     bind();
@@ -939,6 +934,7 @@
       if (q.get('lang')) setLang(q.get('lang') === 'en' ? 'en' : 'zh');
       if (q.get('mode')) $('algoMode').value = q.get('mode');
       if (q.get('centers')) { $('centers').value = q.get('centers'); $('centersVal').textContent = q.get('centers'); setRangeFill($('centers')); }
+      if (q.get('order')) { $('order').value = q.get('order'); $('orderVal').textContent = q.get('order'); setRangeFill($('order')); }
       if (q.get('palette')) $('palette').value = q.get('palette');
       $('animate').checked = false;
       // A tall phone viewport is best served by a portrait-oriented world;

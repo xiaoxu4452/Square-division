@@ -243,28 +243,26 @@
 
   /* ------------------------------------------------------------ Palette */
   /** All colours: lightness 36-72%, saturation >= 52%, no black / white / grey */
+  /**
+   * Restrained, low-chroma palette. Eight quiet hue families x four tonal
+   * steps give 32 distinguishable but understated colours. Chroma is kept
+   * well above zero so no tile is ever black, white or neutral grey, while
+   * lightness stays in a narrow band to avoid a fluorescent mosaic.
+   */
   function palette(name, theme) {
     var dark = theme === 'dark';
-    var out = [], i, h, s, l;
-    if (name === 'mono') {
-      for (i = 0; i < 22; i++) {
-        out.push({ h: 200 + (i % 3) * 7, s: dark ? 76 : 68, l: 36 + i * 1.6 });
-      }
-    } else if (name === 'sky') {
-      for (i = 0; i < 28; i++) {
-        h = 182 + (i / 28) * 128;              // sky blue → cyan → indigo → purple
-        out.push({ h: h, s: dark ? 82 : 72, l: (dark ? 50 : 45) + (i % 4) * 3.0 });
-      }
-    } else if (name === 'warm') {
-      for (i = 0; i < 28; i++) {
-        h = (338 + (i / 28) * 124) % 360;      // magenta → orange → yellow → yellow-green
-        out.push({ h: h, s: dark ? 84 : 74, l: (dark ? 52 : 46) + (i % 4) * 3.0 });
-      }
-    } else {
-      for (i = 0; i < 32; i++) {
-        h = (i / 32) * 360;
-        out.push({ h: h, s: dark ? 80 : 72, l: (dark ? 50 : 45) + (i % 5) * 2.8 });
-      }
+    var fam, out = [], i;
+    if (name === 'sky') fam = [188, 198, 208, 218, 228, 238, 250, 262];
+    else if (name === 'warm') fam = [14, 26, 38, 50, 62, 350, 338, 326];
+    else if (name === 'mono') fam = [202, 206, 210, 214, 218, 222, 226, 230];
+    else fam = [202, 224, 170, 46, 22, 344, 282, 250];
+    for (i = 0; i < 32; i++) {
+      var f = i & 7, t = i >> 3;
+      out.push({
+        h: (fam[f] + (t - 1.5) * 4 + 360) % 360,
+        s: 28 + (t & 1) * 5,
+        l: (dark ? 43 : 49) + t * 6
+      });
     }
     return out;
   }
@@ -334,9 +332,9 @@
       // Per-tile target hue + low-frequency viewport flow: naturally varied without degenerating into a checkerboard
       var flow = opts.hueShift == null ? null : (
         opts.hueShift
-        + hashGrid(ix[i2], iy[i2], isz[i2], (opts.seed || 1) ^ 0x5f3759df) * 150
-        + ((ix[i2] - gx0) / gsx) * 170
-        + ((iy[i2] - gy0) / gsy) * 130
+        + hashGrid(ix[i2], iy[i2], isz[i2], (opts.seed || 1) ^ 0x5f3759df) * 34
+        + ((ix[i2] - gx0) / gsx) * 210
+        + ((iy[i2] - gy0) / gsy) * 145
       ) % 360;
       var strict = -1, strictScore = -Infinity;
       var loose = -1, looseScore = -Infinity;
@@ -430,38 +428,153 @@
 
   var MORON_SIDES = [18, 15, 14, 10, 9, 8, 7, 4, 1];
 
-  /** Static tiling: euclid (continued fraction) or network (Moroń perfect rectangle) */
-  function staticTiling(mode, world) {
-    if (mode === 'euclid') {
-      var out = [], cf = [];
-      euclidChain(0, 0, world.gw, world.gh, out, cf);
-      return { blocks: out, meta: { cf: cf, count: out.length } };
+  /**
+   * Ladder (series/parallel) dissection of a square.
+   *
+   * With t = s/k the parent is partitioned into one (k-1)t square plus a
+   * right strip of k tiles and a bottom strip of k-1 tiles: 2k axis-aligned
+   * squares covering the parent exactly. In the Smith diagram this is the
+   * elementary substitution of one 1-ohm resistor by a series element and a
+   * parallel chain, so repeating it produces an arbitrarily large network
+   * while preserving exact coverage at every level.
+   */
+  function ladderSplit(b, k, depth) {
+    var t = b.s / k, big = t * (k - 1), out = [], i;
+    out.push({ x: b.x, y: b.y, s: big, depth: depth });
+    for (i = 0; i < k; i++)
+      out.push({ x: b.x + big, y: b.y + i * t, s: t, depth: depth });
+    for (i = 0; i < k - 1; i++)
+      out.push({ x: b.x + i * t, y: b.y + big, s: t, depth: depth });
+    return out;
+  }
+
+  var moronCache = null;
+  function moronSolution() {
+    if (!moronCache) moronCache = solvePacking(33, 32, MORON_SIDES);
+    return moronCache;
+  }
+
+  /**
+   * Embed the Moroń 33:32 perfect rectangle as a sub-network inside a square.
+   * The square is divided into a 33x33 lattice of cells of side c = s/33:
+   * the upper 33x32 cells are exactly the nine pairwise-distinct Moroń
+   * squares, and the last row is closed by 33 unit squares. All 42 pieces are
+   * squares and the parent is covered exactly, so one resistor in the Smith
+   * diagram can be replaced by this network at any depth.
+   */
+  function moronEmbed(b, out) {
+    var c = b.s / 33, i;
+    var sol = moronSolution().squares;
+    for (i = 0; i < sol.length; i++) {
+      var sq = sol[i];
+      out.push({
+        x: b.x + sq.x * c, y: b.y + sq.y * c, s: sq.s * c,
+        depth: 0, label: sq.s, kind: 'network'
+      });
     }
-    var best = null, orient = [[33, 32], [32, 33]];
-    for (var i = 0; i < orient.length; i++) {
-      var W0 = orient[i][0], H0 = orient[i][1];
-      var r = solvePacking(W0, H0, MORON_SIDES);
-      if (!r.squares) continue;
-      var scale = Math.min(world.gw / W0, world.gh / H0);
-      var w = W0 * scale, h = H0 * scale;
-      if (!best || w * h > best.w * best.h) {
-        best = { W0: W0, H0: H0, scale: scale, w: w, h: h, sol: r.squares, steps: r.steps };
+    for (i = 0; i < 33; i++)
+      out.push({ x: b.x + i * c, y: b.y + 32 * c, s: c, depth: 0, label: 1, kind: 'network' });
+  }
+
+  /**
+   * Skeleton that already covers the WHOLE rectangle.
+   *
+   * Both modes start from the exact continued-fraction dissection of
+   * w.gw x w.gh (their ratio is the integer ratio m:n, so every Euclidean
+   * step is binary-exact). The network mode then substitutes each skeleton
+   * square by the 42-square Moroń sub-network; the euclid mode keeps the
+   * bare continued-fraction squares. Ladder subdivision later refines every
+   * skeleton square down to the requested on-screen density.
+   */
+  function buildSkeleton(mode, world, meta) {
+    var base = [], cf = [], out = [], i;
+    euclidChain(0, 0, world.gw, world.gh, base, cf);
+    meta.cf = cf;
+    meta.cells = base.length;
+    meta.ratio = world.m + ':' + world.n;
+    if (mode !== 'network') return base;
+
+    var r = moronSolution();
+    if (!r.squares) return base;
+    for (i = 0; i < base.length; i++) moronEmbed(base[i], out);
+    meta.ratio = '33:32';
+    meta.steps = r.steps;
+    meta.sides = MORON_SIDES.slice();
+    return out;
+  }
+
+  /**
+   * One LOD pass over the skeleton. Splitting is driven by on-screen pixel
+   * size, so zooming in keeps unfolding new ladder levels (unbounded depth)
+   * while a frame only ever emits tiles that are actually visible.
+   */
+  function staticOnce(mode, world, opts, minPx, cap) {
+    var meta = {};
+    var skeleton = buildSkeleton(mode, world, meta);
+    var view = opts.view || null;
+    var scale = view ? view.scale : 1;
+    var ox = view ? view.ox : 0, oy = view ? view.oy : 0;
+    var vx0 = view ? view.x0 : -Infinity, vy0 = view ? view.y0 : -Infinity;
+    var vx1 = view ? view.x1 : Infinity, vy1 = view ? view.y1 : Infinity;
+    var maxDepth = opts.maxDepth || 22, k = 3, out = [], exceeded = false;
+
+    function emit(b, depth) {
+      if (exceeded) return;
+      if (b.x > vx1 || b.y > vy1 || b.x + b.s < vx0 || b.y + b.s < vy0) return;
+      if (out.length >= cap) { exceeded = true; return; }
+      var px = b.s * scale;
+      if (depth < maxDepth && px > minPx * 2.4) {
+        var parts = ladderSplit(b, k, depth + 1);
+        for (var i = 0; i < parts.length && !exceeded; i++) emit(parts[i], depth + 1);
+      } else {
+        var nb = { x: b.x - ox, y: b.y - oy, s: b.s, depth: depth, wx: b.x, wy: b.y };
+        if (b.label != null) nb.label = b.label;
+        if (b.kind) nb.kind = b.kind;
+        out.push(nb);
       }
     }
-    if (!best) return { blocks: [], meta: {} };
-    var ox = (world.gw - best.w) / 2, oy = (world.gh - best.h) / 2;
-    var blocks = best.sol.map(function (q) {
-      return { x: ox + q.x * best.scale, y: oy + q.y * best.scale, s: q.s * best.scale, depth: 0, label: q.s, kind: 'network' };
-    });
-    return {
-      blocks: blocks,
-      meta: {
-        inset: { x: ox, y: oy, w: best.w, h: best.h },
-        W0: best.W0, H0: best.H0, ratio: best.W0 + ':' + best.H0,
-        steps: best.steps, sides: MORON_SIDES.slice(),
-        count: blocks.length
-      }
-    };
+    for (var i = 0; i < skeleton.length && !exceeded; i++) emit(skeleton[i], 0);
+
+    out.exceeded = exceeded;
+    out.ox = ox; out.oy = oy;
+    meta.count = out.length;
+    meta.mode = mode;
+    return { blocks: out, meta: meta };
+  }
+
+  /**
+   * Classic dissection for the whole rectangle, with viewport-driven LOD.
+   * @param opts {view, order, minPx, maxBlocks}
+   *   order controls the target on-screen tile size: each step multiplies the
+   *   density, so the square count can grow to hundreds of thousands while
+   *   coverage stays exact. Without a view the full dissection is returned
+   *   in world coordinates (used by the verification suite).
+   */
+  function staticTiling(mode, world, opts) {
+    opts = opts || {};
+    var order = clamp(opts.order == null ? 2 : opts.order, 0, 6);
+    var density = Math.pow(1.6, order - 2);
+    // Without a viewport there is no pixel scale, so use a coarse default to
+    // keep the headless verification suite fast.
+    var basePx = opts.minPx == null ? (opts.view ? 24 : 120) : opts.minPx;
+    // A tile below ~0.6 px carries no information; clamping also bounds the
+    // recursion so very high orders saturate at the cap instead of retrying.
+    var minPx = Math.max(1.0, basePx / density);
+    var cap = opts.maxBlocks || 60000;
+    var result = null;
+    for (var attempt = 0; attempt < 10; attempt++) {
+      // The final pass drops the cap entirely: a coarse but COMPLETE frame is
+      // always preferable to holes left by an aborted subdivision.
+      result = staticOnce(mode, world, opts, minPx, attempt === 9 ? Infinity : cap);
+      if (!result.blocks.exceeded) break;
+      // Gentle coarsening keeps the result close to the cap instead of
+      // dropping back to a much sparser frame.
+      minPx *= 1.3;
+    }
+    result.blocks.exceeded = false;
+    result.meta.order = order;
+    result.meta.minPx = minPx;
+    return result;
   }
 
   /* ------------------------------------------------------------ Validation */

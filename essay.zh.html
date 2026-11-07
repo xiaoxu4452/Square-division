@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>正方形剖分矩形：从欧几里得算法到近无限精确缩放</title>
+<script>
+/* Theme boot: the parent embeds this file as essay.zh.html?theme=dark|light. */
+(function () {
+  var q = new URLSearchParams(window.location.search).get('theme');
+  document.documentElement.setAttribute('data-theme', q === 'light' ? 'light' : 'dark');
+})();
+</script>
+<style>
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+:root,[data-theme="dark"]{
+  --bg:#0d1522; --bg-soft:#111c2c; --panel:#13203a; --frame:#0b1220;
+  --ink:#dce6f2; --ink-soft:#b3c4d9; --muted:#8299b4; --line:#2b3d57;
+  --accent:#5b7fa6; --accent-2:#3f6f9c; --accent-soft:rgba(91,127,166,.16);
+  --fill:#1a2b45; --fill-2:#22364f;
+  --eq-bg:rgba(91,127,166,.07); --code-bg:rgba(91,127,166,.10);
+  --hair:rgba(220,230,242,.16);
+  --c1:#5b7fa6; --c2:#6b8f7e; --c3:#9a7f6a; --c4:#6d7fa0; --c5:#8a7a96; --c6:#7f9384;
+}
+[data-theme="light"]{
+  --bg:#f7f9fc; --bg-soft:#eef3f9; --panel:#ffffff; --frame:#ffffff;
+  --ink:#1c2a40; --ink-soft:#3d4e67; --muted:#5d6f88; --line:#cbd6e4;
+  --accent:#3f6f9c; --accent-2:#5b7fa6; --accent-soft:rgba(63,111,156,.12);
+  --fill:#e4edf7; --fill-2:#d6e3f1;
+  --eq-bg:rgba(63,111,156,.05); --code-bg:rgba(63,111,156,.08);
+  --hair:rgba(28,42,64,.16);
+  --c1:#3f6f9c; --c2:#5c8470; --c3:#a07f63; --c4:#5a6f96; --c5:#7d6b8c; --c6:#668574;
+}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Segoe UI","Noto Sans CJK SC","PingFang SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  font-size:15px; line-height:1.85;
+}
+.paper{max-width:860px;margin:0 auto;padding:48px 26px 80px}
+a{color:var(--accent-2)}
+strong{font-weight:650;color:var(--ink)}
+p{margin:0 0 14px}
+.eyebrow{font-size:.72em;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+h1{font-size:1.9em;line-height:1.36;font-weight:650;letter-spacing:.01em;margin:0 0 10px}
+.subtitle{color:var(--ink-soft);font-size:1em;margin:0 0 22px;line-height:1.7}
+.meta{font-size:.8em;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;margin:0 0 26px;display:flex;flex-wrap:wrap;gap:6px 22px}
+.abstract{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:4px;padding:18px 22px;margin:0 0 16px}
+.abstract h3{margin:0 0 8px;font-size:.82em;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:var(--accent)}
+.abstract p{margin:0;color:var(--ink-soft);font-size:.95em}
+.keywords{font-size:.85em;color:var(--muted);margin:0 0 4px}
+.keywords b{color:var(--accent)}
+section{margin:44px 0 0;padding-top:6px}
+h2{font-size:1.28em;font-weight:650;margin:0 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line);letter-spacing:.01em}
+h2 .num{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:.55em}
+h3{font-size:1.02em;margin:26px 0 8px;font-weight:600}
+.eq{
+  position:relative;background:var(--eq-bg);border:1px solid var(--line);border-radius:4px;
+  padding:14px 74px 14px 16px;margin:16px 0;line-height:2.05;overflow-x:auto;
+}
+.eqn{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.84em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.frac{display:inline-block;vertical-align:middle;text-align:center;font-size:.9em;line-height:1.2;margin:0 .12em}
+.frac>i{display:block;font-style:normal;padding:0 .3em;border-bottom:1px solid var(--ink)}
+.frac>b{display:block;font-weight:normal;padding:0 .3em}
+var{font-style:italic;color:var(--accent-2);font-family:Georgia,"Times New Roman",serif}
+sup,sub{font-size:.72em;line-height:0}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.88em;background:var(--code-bg);color:var(--ink);padding:1px 5px;border-radius:3px;border:1px solid var(--line)}
+figure{margin:22px 0;padding:0}
+figure svg{display:block;width:100%;height:auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:5px}
+figcaption{font-size:.82em;color:var(--muted);text-align:center;margin:9px 0 0;line-height:1.6}
+svg text{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif}
+.note{font-size:.86em;color:var(--muted);border-left:2px solid var(--line);padding-left:14px;margin:16px 0}
+.tag{display:inline-block;font-size:.74em;color:var(--accent);border:1px solid var(--line);border-radius:20px;padding:1px 9px;margin:0 4px 4px 0}
+table{width:100%;border-collapse:collapse;margin:18px 0;font-size:.88em}
+caption{caption-side:top;text-align:left;color:var(--muted);font-size:.84em;margin-bottom:8px}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top;line-height:1.65}
+th{background:var(--bg-soft);color:var(--accent);font-weight:600;white-space:nowrap}
+td code{white-space:nowrap}
+ol.refs{list-style:none;counter-reset:r;padding:0;margin:0}
+ol.refs li{position:relative;padding:8px 0 8px 42px;border-bottom:1px dashed var(--hair);font-size:.9em;color:var(--ink-soft);line-height:1.7}
+ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absolute;left:0;top:8px;color:var(--accent);font-variant-numeric:tabular-nums;font-size:.88em}
+.ref-j{font-style:italic;color:var(--ink)}
+.foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-size:.8em;color:var(--muted);text-align:center}
+@media (max-width:600px){
+  body{font-size:14px}
+  .paper{padding:30px 16px 56px}
+  h1{font-size:1.5em}
+  h2{font-size:1.15em}
+  .eq{padding:12px 58px 12px 12px;font-size:.97em}
+  .eqn{right:9px;font-size:.78em}
+  table{font-size:.8em}
+  th,td{padding:6px 7px}
+}
+</style>
+</head>
+<body>
+<article class="paper">
+
+<header>
+  <p class="eyebrow">方形剖分实验室 · 技术论文 / SQUARED-RECTANGLE LAB · TECHNICAL ESSAY</p>
+  <h1>正方形剖分矩形：从欧几里得算法到近无限精确缩放</h1>
+  <p class="subtitle">尺寸场、Smith 电网络类比、定点高精度与图着色的一份系统札记</p>
+  <div class="meta">
+    <span>版本 1.0</span><span>纯静态实现 · 零外部依赖</span><span>中英双语</span><span>阅读约 25 分钟</span>
+  </div>
+  <div class="abstract">
+    <h3>摘要</h3>
+    <p>本文讨论把矩形精确剖分为有限个正方形的经典问题，并把它与本项目所采用的实时构造算法并置考察。我们首先回顾 Dehn 的可解性定理——长宽比为有理数当且仅当存在有限正方形剖分——并用欧几里得算法与连分数给出构造性一半；继而引入 Brooks–Smith–Stone–Tutte 的 Smith 图，把剖分翻译为单位电阻网络，得到 Kirchhoff 电流定律、Ohm 定律以及等效电阻 R<sub>eq</sub> = W/H。在回顾 Moroń、Sprague、Duijvestijn 等里程碑之后，文章详细推导本项目的多焦点尺寸场 target(d) = L·clamp(d/R, 0, 1)<sup>p</sup>、四叉树 LOD、基于 BigInt 的 80 位定点算术、以及基于扫描线邻接图的异色贪心着色，最后给出 24 项自动化断言与复杂度讨论。全文所有插图均为内联 SVG，不依赖任何外部资源。</p>
+  </div>
+  <p class="keywords"><b>关键词：</b>正方形剖分矩形；连分数；Smith 图；电网络类比；四叉树 LOD；定点高精度；图着色；完美平方方</p>
+</header>
+
+<!-- Section 1 -->
+<section id="s1">
+<h2><span class="num">1.</span>问题定义与可解性</h2>
+<p>所谓把一个 W × H 的矩形作<strong>正方形剖分</strong>（squared rectangle），是指用有限个两两内部不相交、边长分别为 s<sub>1</sub>, …, s<sub>n</sub> 的正方形把该矩形完全覆盖：既不留空隙，也不相互重叠。若所有 s<sub>i</sub> 互不相同，称为<strong>完美</strong>（perfect）剖分；若剖分中不存在一个由若干方块组成、且自身也是被剖分的真子矩形，则称为<strong>简单</strong>（simple）剖分，反之称为<strong>复合</strong>（compound）。这些术语刻画的是剖分的组合结构，而非它的面积。</p>
+<p>任何剖分首先必须满足面积守恒：各小正方形面积之和恰等于外框面积。以 W、H 表示外框的宽与高，有</p>
+<div class="eq"><span class="eqn">(1.1)</span>Σ<sub>i=1</sub><sup>n</sup> <var>s</var><sub>i</sub><sup>2</sup> = <var>W</var> · <var>H</var>.</div>
+<p>这是一个必要条件，却远非充分：它只约束了面积这一阶矩，对边界究竟如何拼接毫无约束。事实上，满足式 (1.1) 的整数多重集不计其数，能真正铺成矩形的却极少。</p>
+<p>真正的可解性判据由 Dehn 于 1903 年给出：矩形可作有限正方形剖分，当且仅当其长宽比是有理数。</p>
+<div class="eq"><span class="eqn">(1.2)</span><span class="frac"><i><var>W</var></i><b><var>H</var></b></span> ∈ ℚ &nbsp;⟺&nbsp; ∃ <var>n</var> &lt; ∞, {<var>s</var><sub>i</sub>} : 矩形被有限个正方形剖分.</div>
+<p>充分性方向是构造性的：若 W/H = p/q（p、q 为正整数），把矩形缩放为 p × q 后，用 pq 个单位正方形即可铺满；更「经济」的铺法来自下一章的欧几里得算法。必要性方向则是非构造性的，却异常优美：因 W/H 无理，W 与 H 在 ℚ 上线性无关，故可取一个 ℚ-线性泛函 f 使 f(W) &gt; 0、f(H) &lt; 0；对轴对齐矩形定义可加泛函 Φ = f(宽)·f(高)，它在每个正方形上恒为 f(s)<sup>2</sup> ≥ 0，而外框上 Φ = f(W)f(H) &lt; 0，与 Φ 的可加性矛盾。这一「带权面积」正是后来 Dehn 不变量思想的雏形。</p>
+<p>若进一步把所有边长同时除以它们的最大公约数，可设</p>
+<div class="eq"><span class="eqn">(1.3)</span>gcd(<var>s</var><sub>1</sub>, …, <var>s</var><sub>n</sub>) = 1,</div>
+<p>称为<strong>本原</strong>（primitive）剖分。Conway 等人研究的 <em>Mrs. Perkins's Quilt</em> 正是要求 gcd 为 1 的整数边长剖分，并追求在给定外框边长下使用最少的方块数；由于式 (1.1) 只约束平方和，本原性把问题化为一个整数规划式的组合搜索。最后，本文反复使用的第三个视角是 Brooks–Smith–Stone–Tutte 的电网络对应：把水平剖分线视作节点、每个方块视作 1 Ω 电阻，剖分问题便转化为一个可解的线性电路问题——第 3 章将严格化这一对应。</p>
+</section>
+
+<!-- Section 2 -->
+<section id="s2">
+<h2><span class="num">2.</span>欧几里得算法与连分数</h2>
+<p>可解性的构造性一半，几乎就是欧几里得算法本身。给定 a &gt; b &gt; 0，反复作带余除法。用统一的记号 r<sub>−1</sub> = a、r<sub>0</sub> = b，则</p>
+<div class="eq"><span class="eqn">(2.1)</span><var>r</var><sub>k−1</sub> = <var>q</var><sub>k</sub> <var>r</var><sub>k</sub> + <var>r</var><sub>k+1</sub>, &nbsp; 0 ≤ <var>r</var><sub>k+1</sub> &lt; <var>r</var><sub>k</sub>, &nbsp; <var>r</var><sub>n+1</sub> = 0.</div>
+<p>每一步的商 q<sub>k</sub> 恰好告诉我们要从当前矩形中切掉多少个边长为 r<sub>k</sub> 的最大正方形：这就是「贪心铺方」。余数为零时算法终止，最后的非零余数即 gcd(a, b)；因此算法终止当且仅当 a/b 为有理数，这与式 (1.2) 遥相呼应。</p>
+<p>把带余除法改写成连分数，就得到</p>
+<div class="eq"><span class="eqn">(2.2)</span><span class="frac"><i><var>a</var></i><b><var>b</var></b></span> = <var>q</var><sub>0</sub> + <span class="frac"><i>1</i><b><var>q</var><sub>1</sub> + <span class="frac"><i>1</i><b><var>q</var><sub>2</sub> + ⋯</b></span></b></span> = [<var>q</var><sub>0</sub>; <var>q</var><sub>1</sub>, <var>q</var><sub>2</sub>, …, <var>q</var><sub>n</sub>].</div>
+<p>以 3:2 为例：3 = 1·2 + 1，2 = 2·1 + 0，故</p>
+<div class="eq"><span class="eqn">(2.3)</span><span class="frac"><i>3</i><b>2</b></span> = 1 + <span class="frac"><i>1</i><b>2</b></span> = [1; 2] &nbsp;⟹&nbsp; 1 个 2×2 方块 + 2 个 1×1 方块 = 3 块, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> = 4+1+1 = 6 = 3×2.</div>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="Euclidean dissection of a 3 by 2 rectangle">
+  <text x="40" y="22" font-size="14" style="fill:var(--ink);stroke:none">3 × 2 矩形</text>
+  <rect x="40" y="36" width="180" height="180" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="220" y="36" width="90" height="90" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="220" y="126" width="90" height="90" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <text x="130" y="132" font-size="18" text-anchor="middle" style="fill:var(--ink);stroke:none">2×2</text>
+  <text x="265" y="86" font-size="15" text-anchor="middle" style="fill:var(--ink);stroke:none">1</text>
+  <text x="265" y="176" font-size="15" text-anchor="middle" style="fill:var(--ink);stroke:none">1</text>
+  <text x="130" y="210" font-size="12" text-anchor="middle" style="fill:var(--muted);stroke:none">q₀ = 1</text>
+  <text x="265" y="228" font-size="12" text-anchor="middle" style="fill:var(--muted);stroke:none">q₁ = 2</text>
+  <line x1="328" y1="24" x2="328" y2="228" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="348" y="40" font-size="15" style="fill:var(--accent);stroke:none">欧几里得算法</text>
+  <text x="348" y="76" font-size="14" style="fill:var(--ink);stroke:none">3 = 1·2 + 1</text>
+  <text x="348" y="104" font-size="14" style="fill:var(--ink);stroke:none">2 = 2·1 + 0</text>
+  <text x="348" y="140" font-size="14" style="fill:var(--ink);stroke:none">3/2 = [1; 2]</text>
+  <text x="348" y="168" font-size="13" style="fill:var(--muted);stroke:none">商序列 (q₀, q₁) = (1, 2)</text>
+  <text x="348" y="198" font-size="13" style="fill:var(--muted);stroke:none">Σ sᵢ² = 4+1+1 = 6 = 3×2 ✓</text>
+  <text x="348" y="224" font-size="13" style="fill:var(--accent-2);stroke:none">终止 ⟹ 有限剖分</text>
+</svg>
+<figcaption>Figure 1. 3:2 矩形的欧几里得剖分：商序列 [1;2] 给出 1 个 2×2 方块与 2 个 1×1 方块，共三块；面积 4+1+1 = 6 = 3×2 守恒。</figcaption>
+</figure>
+<p>若长宽比为黄金比 φ，连分数永不终止：</p>
+<div class="eq"><span class="eqn">(2.4)</span><var>φ</var> = <span class="frac"><i>1 + √5</i><b>2</b></span> = [1; 1, 1, 1, …].</div>
+<p>由式 (1.2)，φ 无理，故黄金矩形不存在有限正方形剖分；贪心过程会不断产生越来越小的方块，趋向一个无限剖分。截断连分数得到的<strong>渐近分数</strong> p<sub>n</sub>/q<sub>n</sub> = [q<sub>0</sub>; …, q<sub>n</sub>] 满足递推</p>
+<div class="eq"><span class="eqn">(2.5)</span><var>p</var><sub>n</sub> = <var>a</var><sub>n</sub><var>p</var><sub>n−1</sub> + <var>p</var><sub>n−2</sub>, &nbsp; <var>q</var><sub>n</sub> = <var>a</var><sub>n</sub><var>q</var><sub>n−1</sub> + <var>q</var><sub>n−2</sub> &nbsp; (<var>p</var><sub>−1</sub>=1, <var>p</var><sub>−2</sub>=0; <var>q</var><sub>−1</sub>=0, <var>q</var><sub>−2</sub>=1),</div>
+<p class="note">其中 a<sub>n</sub> 记 (2.2) 中第 n 个部分商；此处改记 a<sub>n</sub>，是为了避免与渐近分数的分母 q<sub>n</sub> 混淆。</p>
+<p>且误差被相邻两项分母严格控制：</p>
+<div class="eq"><span class="eqn">(2.6)</span>|<var>α</var> − <span class="frac"><i><var>p</var><sub>n</sub></i><b><var>q</var><sub>n</sub></b></span>| &lt; <span class="frac"><i>1</i><b><var>q</var><sub>n</sub><var>q</var><sub>n+1</sub></b></span> ≤ <span class="frac"><i>1</i><b><var>q</var><sub>n</sub><sup>2</sup></b></span>.</div>
+<p>对 φ 而言 p<sub>n</sub>/q<sub>n</sub> = F<sub>n+1</sub>/F<sub>n</sub>（斐波那契比），误差以 1/q<sub>n</sub><sup>2</sup> 的速度衰减。这正是图 2 中折线不断收紧、方块尺寸按 1, 1, 2, 3, 5, 8, 13, … 增长的解析解释：连分数既给出了「能否有限剖分」的判据，也给出了「用有理比逼近无理比」的最优速率。</p>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="Golden-ratio continued fraction and Fibonacci squares">
+  <rect x="20" y="30" width="104" height="104" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="124" y="30" width="64" height="64" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="124" y="94" width="40" height="40" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="164" y="110" width="24" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="164" y="94" width="16" height="16" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="180" y="94" width="8" height="8" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="180" y="102" width="8" height="8" style="fill:var(--fill);stroke:var(--line);stroke-width:1"/>
+  <rect x="20" y="30" width="168" height="104" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="72" y="88" font-size="16" text-anchor="middle" style="fill:var(--ink);stroke:none">13</text>
+  <text x="156" y="66" font-size="14" text-anchor="middle" style="fill:var(--ink);stroke:none">8</text>
+  <text x="144" y="118" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">5</text>
+  <text x="176" y="126" font-size="10" text-anchor="middle" style="fill:var(--ink);stroke:none">3</text>
+  <text x="172" y="105" font-size="8" text-anchor="middle" style="fill:var(--ink);stroke:none">2</text>
+  <text x="184" y="101" font-size="6" text-anchor="middle" style="fill:var(--ink);stroke:none">1</text>
+  <polyline points="72,82 156,62 144,114 176,122 172,102 184,98 184,106" style="fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5 4"/>
+  <line x1="300" y1="24" x2="300" y2="228" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="320" y="40" font-size="15" style="fill:var(--accent);stroke:none">φ = [1; 1, 1, 1, …]</text>
+  <text x="320" y="70" font-size="14" style="fill:var(--ink);stroke:none">φ = (1+√5)/2 ≈ 1.618034</text>
+  <text x="320" y="98" font-size="13" style="fill:var(--ink-soft);stroke:none">pₙ/qₙ = Fₙ₊₁/Fₙ</text>
+  <text x="320" y="124" font-size="13" style="fill:var(--ink-soft);stroke:none">1/1, 2/1, 3/2, 5/3, 8/5, 13/8, 21/13</text>
+  <text x="320" y="150" font-size="13" style="fill:var(--muted);stroke:none">→ 1.000, 2.000, 1.500, 1.667, …</text>
+  <text x="320" y="182" font-size="13" style="fill:var(--ink);stroke:none">|φ − pₙ/qₙ| &lt; 1/(qₙqₙ₊₁)</text>
+  <text x="320" y="210" font-size="13" style="fill:var(--accent-2);stroke:none">qₙ → ∞ ⟹ 误差 → 0，但连分数不终止</text>
+  <text x="320" y="232" font-size="12" style="fill:var(--muted);stroke:none">⟹ 黄金矩形无有限正方形剖分（示意）</text>
+</svg>
+<figcaption>Figure 2. 黄金比的连分数与斐波那契方块：边长 1, 1, 2, 3, 5, 8, 13 的方块螺旋式地填满一个 21×13 黄金矩形；渐近分数 p<sub>n</sub>/q<sub>n</sub> 交错收敛于 φ，误差被 1/(q<sub>n</sub>q<sub>n+1</sub>) 控制（结构示意）。</figcaption>
+</figure>
+</section>
+
+<!-- Section 3 -->
+<section id="s3">
+<h2><span class="num">3.</span>Smith 图：剖分与电网络的对应</h2>
+<p>1936–1940 年间，Brooks、Smith、Stone 与 Tutte 在剑桥把一个纯粹的组合几何问题翻译成了电路理论，这套对应后世称为 <strong>Smith 图</strong>。给定任一正方形剖分，把每一条水平剖分线（即某个方块上边或下边所在的直线）视作一个<strong>节点</strong>，并令该节点的电势 V 等于这条线的纵向坐标；把每一个边长为 s 的正方形视作连接其上下两条水平线的一条<strong>支路</strong>，支路电阻统一取 R = 1 Ω，支路电流 I 取该正方形的边长 s。于是电势差恰为 s、电流恰为 s，Ohm 定律自动成立——几何与电路在此完全重合。</p>
+<p>先看守恒律。同一条水平线，被位于其上方的方块与位于其下方的方块各自完整地铺满，两侧的宽度之和都等于 W；把方块边长解释为电流，流入与流出该节点的电流便相等，这正是 Kirchhoff 电流定律：</p>
+<div class="eq"><span class="eqn">(3.1)</span>Σ<sub>k ∈ in(v)</sub> <var>I</var><sub>k</sub> = Σ<sub>k ∈ out(v)</sub> <var>I</var><sub>k</sub> &nbsp;⟺&nbsp; Σ<sub>k</sub> <var>I</var><sub>k</sub> = 0 &nbsp; (∀ 节点 <var>v</var>).</div>
+<p>而在竖直方向上，沿任一竖直线各段方块的高度累加为外框高度 H；对单个电阻，电势降等于电流乘电阻：</p>
+<div class="eq"><span class="eqn">(3.2)</span><var>V</var> = <var>I</var> · <var>R</var>, &nbsp; <var>R</var> = 1 Ω &nbsp;⟹&nbsp; Δ<var>V</var> = <var>s</var> = <var>I</var>.</div>
+<p>式 (3.1) 来自「同一水平线上宽度和守恒」，式 (3.2) 来自「竖直方向高度和」，二者分别对应电路的拓扑约束与元件约束；任何正方形剖分因此都给出一个满足 Kirchhoff 定律与 Ohm 定律的可解线性网络，反之，一个具有正电流解的 1 Ω 网络也可还原为一个剖分。</p>
+<p>把整个网络对外看作一个二端元件，其等效电阻定义为端电压与总电流之比。BSST 证明，在「每个方块 = 1 Ω、电流 = 边长」的归一化下，这个比值恰好等于外框的长宽比：</p>
+<div class="eq"><span class="eqn">(3.3)</span><var>R</var><sub>eq</sub> = <span class="frac"><i><var>V</var></i><b><var>I</var></b></span> = <span class="frac"><i><var>W</var></i><b><var>H</var></b></span>.</div>
+<p>直观地说：以左右两条边界为端子时，注入的总电流是沿竖直边界累加的 H，端电压是沿水平方向累加的 W，二者相除即得 W/H。当外框为正方形时</p>
+<div class="eq"><span class="eqn">(3.4)</span><var>W</var> = <var>H</var> &nbsp;⟹&nbsp; <var>R</var><sub>eq</sub> = 1.</div>
+<p>项目早期科普里那句「外框为正方形时总电阻为 1」，其实只是式 (3.3) 在 W/H = 1 处的特例；对一般矩形，等效电阻随长宽比连续变化，而不是恒等于 1。（若把网络转置 90°、改以上下边界为端子，则得到互倒值 H/W = 1/R<sub>eq</sub>；两者只差一次源漏取向，本文统一采用 (3.3) 的记号。）</p>
+<p>这类比还给出一个有用的阅读方式。在本项目的多焦点剖分里，焦点附近方块又小又密；用 Smith 图的语言说，那里沿每条水平线分布的支路数最多、单位面积内载流支路最密集，也就是<strong>电流密度</strong>最高的区域。等效电阻 R<sub>eq</sub> = W/H 描述的是整个视口的宏观输运，而局部电流密度刻画了剖分的疏密结构——一宏观一微观，正对应后文尺寸场与 LOD 的分工。</p>
+<figure>
+<svg viewBox="0 0 600 290" style="width:100%;height:auto" role="img" aria-label="Smith diagram: dissection beside its resistor network">
+  <text x="30" y="26" font-size="14" style="fill:var(--accent);stroke:none">正方形剖分（3:2）</text>
+  <text x="320" y="26" font-size="14" style="fill:var(--accent);stroke:none">Smith 电路</text>
+  <rect x="30" y="40" width="180" height="120" style="fill:var(--bg);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="30" y="40" width="120" height="120" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="150" y="40" width="60" height="60" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="150" y="100" width="60" height="60" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <line x1="30" y1="100" x2="210" y2="100" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="90" y="104" font-size="13" text-anchor="middle" style="fill:var(--ink);stroke:none">s=2 (I=2)</text>
+  <text x="180" y="74" font-size="11" text-anchor="middle" style="fill:var(--ink);stroke:none">s=1</text>
+  <text x="180" y="134" font-size="11" text-anchor="middle" style="fill:var(--ink);stroke:none">s=1</text>
+  <text x="18" y="46" font-size="11" style="fill:var(--muted);stroke:none">N0</text>
+  <text x="18" y="104" font-size="11" style="fill:var(--muted);stroke:none">N1</text>
+  <text x="18" y="164" font-size="11" style="fill:var(--muted);stroke:none">N2</text>
+  <line x1="290" y1="24" x2="290" y2="266" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="296" y="200" font-size="11" style="fill:var(--muted);stroke:none">⟷</text>
+  <line x1="330" y1="60" x2="560" y2="60" style="fill:none;stroke:var(--accent);stroke-width:1.6"/>
+  <line x1="390" y1="150" x2="560" y2="150" style="fill:none;stroke:var(--accent);stroke-width:1.6"/>
+  <line x1="330" y1="240" x2="560" y2="240" style="fill:none;stroke:var(--accent);stroke-width:1.6"/>
+  <text x="300" y="64" font-size="12" style="fill:var(--muted);stroke:none">V=0</text>
+  <text x="360" y="154" font-size="12" style="fill:var(--muted);stroke:none">V=1</text>
+  <text x="300" y="244" font-size="12" style="fill:var(--muted);stroke:none">V=2</text>
+  <line x1="360" y1="60" x2="360" y2="240" style="fill:none;stroke:var(--line);stroke-width:1.3"/>
+  <rect x="352" y="140" width="16" height="22" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="372" y="156" font-size="11" style="fill:var(--ink);stroke:none">1Ω · I=2</text>
+  <line x1="430" y1="60" x2="430" y2="150" style="fill:none;stroke:var(--line);stroke-width:1.3"/>
+  <rect x="422" y="96" width="16" height="22" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="442" y="112" font-size="11" style="fill:var(--ink);stroke:none">1Ω · I=1</text>
+  <line x1="500" y1="150" x2="500" y2="240" style="fill:none;stroke:var(--line);stroke-width:1.3"/>
+  <rect x="492" y="186" width="16" height="22" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="512" y="202" font-size="11" style="fill:var(--ink);stroke:none">1Ω · I=1</text>
+  <circle cx="330" cy="60" r="3" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="330" cy="240" r="3" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="390" cy="150" r="3" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <text x="30" y="272" font-size="12" style="fill:var(--ink-soft);stroke:none">KCL: Σ Iₖ = 0（N1 处 1 = 1）　 Ohm: V = I·R　 R_eq = W/H = 3/2</text>
+</svg>
+<figcaption>Figure 3. 左：3:2 剖分的三条水平线 N0/N1/N2；右：对应的 Smith 电路，每个方块是一条 1 Ω 电阻、电流等于边长。宽度和守恒给出 Kirchhoff Σ I<sub>k</sub> = 0，高度和给出 Ohm V = I·R；整体等效电阻 R<sub>eq</sub> = W/H。</figcaption>
+</figure>
+</section>
+
+<!-- Section 4 -->
+<section id="s4">
+<h2><span class="num">4.</span>完美矩形的里程碑</h2>
+<p>若进一步要求所有方块边长互不相同，剖分便困难得多，这就是<strong>完美剖分</strong>。1925 年，波兰数学家 Zbigniew Moroń 给出了第一个完美的（矩形）正方形剖分：一个 33×32 的矩形，由 9 个边长互不相同的方块组成</p>
+<div class="eq"><span class="eqn">(4.0)</span>{<var>s</var><sub>i</sub>} = {18, 15, 14, 10, 9, 8, 7, 4, 1}, &nbsp; <var>n</var> = 9.</div>
+<p>它同时是<strong>简单</strong>的：其中不存在一个由若干方块构成、自身也被剖分的真子矩形。先用式 (1.1) 做一次最朴素的核算：</p>
+<div class="eq"><span class="eqn">(4.1)</span>Σ<var>s</var><sub>i</sub><sup>2</sup> = 18<sup>2</sup>+15<sup>2</sup>+14<sup>2</sup>+10<sup>2</sup>+9<sup>2</sup>+8<sup>2</sup>+7<sup>2</sup>+4<sup>2</sup>+1<sup>2</sup> = 324+225+196+100+81+64+49+16+1 = 1056 = 33 × 32.</div>
+<p class="note">核算修正：33 × 32 = 1056，九个平方和亦为 1056，二者相等。常见的笔误是写成 1089 —— 1089 = 33<sup>2</sup> 是 33×33 正方形的面积，而非 33×32 矩形的面积。本文在写作时据面积守恒逐项核算并修正了这一数值。</p>
+<p>图 4 给出了这 9 个方块的精确整数布局（以左上角为原点、单位为 1）：(0,0,18)、(18,0,15)、(18,15,7)、(25,15,8)、(0,18,14)、(14,18,4)、(14,22,10)、(24,22,1)、(24,23,9)；按行逐段检查可见既无空隙也无重叠。由于集合中含有 1×1 方块，gcd(s<sub>i</sub>) = 1，满足本原性；这正是 Conway 所研究的 Mrs. Perkins's Quilt 对整数边长剖分提出的核心条件——不过 MPQ 通常专指外框为<strong>正方形</strong>的情形，Moroń 的解是矩形。</p>
+<figure>
+<svg viewBox="0 0 600 320" style="width:100%;height:auto" role="img" aria-label="Moron 33 by 32 perfect rectangle with nine squares">
+  <text x="150" y="26" font-size="13" style="fill:var(--muted);stroke:none">W = 33</text>
+  <text x="6" y="168" font-size="13" style="fill:var(--muted);stroke:none">H=32</text>
+  <rect x="40" y="36" width="264" height="256" style="fill:var(--bg);stroke:var(--accent-2);stroke-width:1.6"/>
+  <rect x="40" y="36" width="144" height="144" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="184" y="36" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="184" y="156" width="56" height="56" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="240" y="156" width="64" height="64" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="40" y="180" width="112" height="112" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="152" y="180" width="32" height="32" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="152" y="212" width="80" height="80" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="232" y="212" width="8" height="8" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <rect x="232" y="220" width="72" height="72" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="112" y="112" font-size="20" text-anchor="middle" style="fill:var(--ink);stroke:none">18</text>
+  <text x="244" y="102" font-size="20" text-anchor="middle" style="fill:var(--ink);stroke:none">15</text>
+  <text x="212" y="190" font-size="15" text-anchor="middle" style="fill:var(--ink);stroke:none">7</text>
+  <text x="272" y="194" font-size="17" text-anchor="middle" style="fill:var(--ink);stroke:none">8</text>
+  <text x="96" y="240" font-size="20" text-anchor="middle" style="fill:var(--ink);stroke:none">14</text>
+  <text x="168" y="200" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">4</text>
+  <text x="192" y="256" font-size="18" text-anchor="middle" style="fill:var(--ink);stroke:none">10</text>
+  <text x="268" y="262" font-size="18" text-anchor="middle" style="fill:var(--ink);stroke:none">9</text>
+  <line x1="236" y1="216" x2="330" y2="200" style="fill:none;stroke:var(--accent);stroke-width:1.1;stroke-dasharray:4 3"/>
+  <line x1="330" y1="24" x2="330" y2="300" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="340" y="46" font-size="15" style="fill:var(--accent);stroke:none">Moroń, 1925</text>
+  <text x="340" y="76" font-size="14" style="fill:var(--ink);stroke:none">33 × 32 = 1056</text>
+  <text x="340" y="104" font-size="12" style="fill:var(--ink-soft);stroke:none">18²+15²+14²+10²+9²+8²+7²+4²+1²</text>
+  <text x="340" y="128" font-size="12" style="fill:var(--ink-soft);stroke:none">= 324+225+196+100+81+64+49+16+1</text>
+  <text x="340" y="152" font-size="14" style="fill:var(--accent-2);stroke:none">= 1056 ✓</text>
+  <text x="340" y="184" font-size="12" style="fill:var(--muted);stroke:none">9 块边长互异 ⟹ perfect</text>
+  <text x="340" y="208" font-size="12" style="fill:var(--muted);stroke:none">无真子矩形 ⟹ simple</text>
+  <text x="340" y="232" font-size="12" style="fill:var(--muted);stroke:none">含 1×1 ⟹ gcd = 1，primitive</text>
+  <text x="340" y="264" font-size="12" style="fill:var(--muted);stroke:none">注意：1089 = 33² ≠ 33×32</text>
+</svg>
+<figcaption>Figure 4. Moroń 1925 的 33×32 完美矩形：9 个方块的精确整数布局（每块标注边长）。九块平方和为 1056 = 33×32，面积守恒；含 1×1 方块故 gcd = 1。</figcaption>
+</figure>
+<p>此后：1939 年 Sprague 构造出第一个<strong>完美平方方</strong>（perfect squared square），阶数 55、边长 4205；1978 年 Duijvestijn 借助计算机找到阶数最低的简单完美平方方——21 阶、112×112，并证明不存在更低阶的解。附录图 11 给出一个简化的 21 阶结构示意（非精确布局）。这些结果把 §1 的存在性问题推进为一个极值组合问题：在「所有边长互异」「本原」等约束下最小化方块数 n。从 9 块到 21 块，从矩形到正方形，难度跃升的根源在于边界条件从两条独立边变成了一条封闭的回路。</p>
+</section>
+
+<!-- Section 5 -->
+<section id="s5">
+<h2><span class="num">5.</span>多焦点尺寸场算法</h2>
+<p>与经典问题不同，本项目并不追求一个固定的、块数最少的剖分，而是要在任意缩放层级上实时生成一张「近处极密、远处极大」的剖分。做法是构造一个连续的目标边长场。设世界由 m × n 个边长为 L = 2<sup>D</sup> 的宏块组成（D 为整数深度，故 L 在二进制下精确），焦点集合为 {f<sub>j</sub>}，则任一点 p 到最近焦点的距离为</p>
+<div class="eq"><span class="eqn">(5.1)</span><var>d</var>(<var>p</var>) = min<sub>j</sub> ‖<var>p</var> − <var>f</var><sub>j</sub>‖<sub>2</sub>.</div>
+<p>目标边长定义为</p>
+<div class="eq"><span class="eqn">(5.2)</span>target(<var>d</var>) = <var>L</var> · clamp(<span class="frac"><i><var>d</var></i><b><var>R</var></b></span>, 0, 1)<sup><var>p</var></sup>, &nbsp; clamp(<var>x</var>,0,1) = min(1, max(0, <var>x</var>)).</div>
+<p>这里 R 是影响半径，p &gt; 0 是形状指数（项目默认 p = 2.4，可在 1–5 间调节）。指数越大，曲线在焦点附近越陡、细分越集中；p = 1 时退化为线性场。由于 L = 2<sup>D</sup>、坐标均为 dyadic，所有方块边长都能被二进制精确表示，为后文的整数网格哈希与邻接判定打下基础。</p>
+<p>从宏块出发做四叉细分：对每个候选方块，把中心点代入尺寸场，若<strong>同时</strong>满足</p>
+<div class="eq"><span class="eqn">(5.3)</span><var>s</var> &gt; 1.35 · target(中心) &nbsp;且&nbsp; <var>s</var> · scale &gt; 2.1 · minPx,</div>
+<p>则把它等分为四个 s/2 的子方块并递归，否则输出该方块。第一个不等式是几何判据（方块比目标尺寸粗就继续细分）；第二个是屏幕像素判据——若细分后的方块在屏幕上已不足 minPx 像素，再细分只会浪费。scale 是每世界单位对应的屏幕像素数。注意两个判据是「与」关系：像素判据是消融性的安全阀，绝不会反过来在远场制造小方块。</p>
+<p>这个构造有一个关键性质：当 d ≥ R 时 clamp(d/R, 0, 1) = 1，于是</p>
+<div class="eq"><span class="eqn">(5.4)</span>target(<var>d</var>) = <var>L</var> · 1<sup><var>p</var></sup> = <var>L</var> &nbsp; (<var>d</var> ≥ <var>R</var>).</div>
+<p>而任何方块边长 s 都不超过宏块边长 L，故 s &gt; 1.35·L 永不成立——<strong>远端严格不会产生小方块</strong>。尺寸场把「细分预算」全部集中在焦点附近，远处保持大块，这正是图 7 中「远端大块 / 近端密块」的直接来源，也是 §9 中断言「远场 target = L」所验证的性质。</p>
+<figure>
+<svg viewBox="0 0 600 260" style="width:100%;height:auto" role="img" aria-label="target(d) curves for three exponents">
+  <line x1="60" y1="210" x2="590" y2="210" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="60" y1="20" x2="60" y2="210" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="156" y1="30" x2="156" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="252" y1="30" x2="252" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="348" y1="30" x2="348" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="444" y1="30" x2="444" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="60" y1="165" x2="540" y2="165" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="60" y1="120" x2="540" y2="120" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="60" y1="75" x2="540" y2="75" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <rect x="540" y="30" width="45" height="180" style="fill:var(--accent-soft);stroke:none"/>
+  <line x1="540" y1="30" x2="585" y2="30" style="fill:none;stroke:var(--accent-2);stroke-width:1.6;stroke-dasharray:6 3"/>
+  <line x1="540" y1="30" x2="540" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <path d="M60,210 L540,30" style="fill:none;stroke:var(--ink-soft);stroke-width:1.3"/>
+  <path d="M60,210 L156,206 L252,190 L348,157 L444,105 L540,30" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <path d="M60,210 L156,210 L252,205 L348,187 L444,136 L540,30" style="fill:none;stroke:var(--accent);stroke-width:1.6;stroke-dasharray:6 3"/>
+  <rect x="380" y="36" width="190" height="84" style="fill:var(--bg-soft);stroke:var(--line);stroke-width:1.1"/>
+  <line x1="392" y1="56" x2="420" y2="56" style="fill:none;stroke:var(--ink-soft);stroke-width:1.3"/>
+  <text x="428" y="60" font-size="12" style="fill:var(--ink);stroke:none">p = 1</text>
+  <line x1="392" y1="80" x2="420" y2="80" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="428" y="84" font-size="12" style="fill:var(--ink);stroke:none">p = 2.4（默认）</text>
+  <line x1="392" y1="104" x2="420" y2="104" style="fill:none;stroke:var(--accent);stroke-width:1.6;stroke-dasharray:6 3"/>
+  <text x="428" y="108" font-size="12" style="fill:var(--ink);stroke:none">p = 4</text>
+  <text x="64" y="20" font-size="12" style="fill:var(--muted);stroke:none">target/L</text>
+  <text x="46" y="34" font-size="11" style="fill:var(--muted);stroke:none">1</text>
+  <text x="46" y="214" font-size="11" style="fill:var(--muted);stroke:none">0</text>
+  <text x="534" y="226" font-size="11" style="fill:var(--muted);stroke:none">1</text>
+  <text x="562" y="226" font-size="12" style="fill:var(--muted);stroke:none">d/R</text>
+  <text x="496" y="226" font-size="11" style="fill:var(--muted);stroke:none">d = R</text>
+  <text x="150" y="242" font-size="12" style="fill:var(--accent-2);stroke:none">远场 d ≥ R ⟹ target = L（水平渐近，无小方块）</text>
+</svg>
+<figcaption>Figure 5. target(d) = L·clamp(d/R, 0, 1)<sup>p</sup>：取 p = 1、2.4（项目默认）、4 三条曲线。指数越大，近焦点处目标边长越小；d ≥ R 时曲线饱和于 target = L，远端严格不产生小方块。</figcaption>
+</figure>
+<p>四叉分裂不是在原方块旁添加新方块，而是把父块本身划分成四个互不重叠、恰好铺满父块的子块；由归纳法，任意迭代次数后叶节点集合仍精确覆盖整个世界，覆盖率 100%、重叠为 0（由 §9 的 validate 断言验证）。</p>
+<figure>
+<svg viewBox="0 0 600 280" style="width:100%;height:auto" role="img" aria-label="Quadtree subdivision tree and corresponding grid">
+  <text x="16" y="26" font-size="13" style="fill:var(--accent);stroke:none">细分树</text>
+  <text x="300" y="26" font-size="13" style="fill:var(--accent);stroke:none">对应网格</text>
+  <rect x="72" y="40" width="36" height="36" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <text x="90" y="64" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">s</text>
+  <line x1="90" y1="76" x2="30" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="90" y1="76" x2="70" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="90" y1="76" x2="110" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="90" y1="76" x2="150" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="16" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="56" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="96" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="136" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="30" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="70" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="110" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="150" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <line x1="30" y1="152" x2="15" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="30" y1="152" x2="39" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="30" y1="152" x2="63" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="30" y1="152" x2="87" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="4" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="28" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="52" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="76" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <text x="8" y="248" font-size="11" style="fill:var(--muted);stroke:none">depth 0</text>
+  <text x="8" y="140" font-size="11" style="fill:var(--muted);stroke:none">depth 1</text>
+  <text x="8" y="220" font-size="11" style="fill:var(--muted);stroke:none">depth 2</text>
+  <line x1="285" y1="24" x2="285" y2="258" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <rect x="300" y="40" width="200" height="200" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.6"/>
+  <line x1="400" y1="40" x2="400" y2="240" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="300" y1="140" x2="500" y2="140" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="350" y1="40" x2="350" y2="140" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="300" y1="90" x2="400" y2="90" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <text x="330" y="70" font-size="12" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="425" y="95" font-size="13" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="425" y="195" font-size="13" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="330" y="195" font-size="13" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="300" y="262" font-size="12" style="fill:var(--accent-2);stroke:none">覆盖 = 100%　重叠 = 0　（划分，非叠加）</text>
+</svg>
+<figcaption>Figure 6. 四叉分裂：父块被等分为四个子块（左：细分树；右：对应网格，高亮象限再分一层）。每次分裂都是对父块的<strong>划分</strong>，故叶节点集合恒精确覆盖整个世界。</figcaption>
+</figure>
+<p>此外，尺寸场完全在视口局部坐标中求值：判据 (5.3) 中出现的都是 d/R、s/target 这类无量纲比值，尺寸场本身不含任何绝对世界尺度下限——需要绝对尺度的只有 (5.3) 中面向屏幕的第二个判据。因此把 L 与 R 同时缩放、或把整个视口放大，只会等比例地重标尺寸场而不改变剖分形态：这就是<strong>尺度不变性</strong>，也是下一章 LOD 得以成立的前提。</p>
+<figure>
+<svg viewBox="0 0 600 280" style="width:100%;height:auto" role="img" aria-label="Multi-focus size field: large tiles far away, dense tiles near foci">
+  <path d="M30,20 h60 v60 h-60 Z M90,20 h60 v60 h-60 Z M150,20 h60 v60 h-60 Z M210,20 h60 v60 h-60 Z M270,20 h60 v60 h-60 Z M330,20 h60 v60 h-60 Z M390,20 h60 v60 h-60 Z M450,20 h60 v60 h-60 Z M30,80 h60 v60 h-60 Z M210,80 h60 v60 h-60 Z M270,80 h60 v60 h-60 Z M450,80 h60 v60 h-60 Z M30,140 h60 v60 h-60 Z M210,140 h60 v60 h-60 Z M270,140 h60 v60 h-60 Z M450,140 h60 v60 h-60 Z M30,200 h60 v60 h-60 Z M90,200 h60 v60 h-60 Z M150,200 h60 v60 h-60 Z M210,200 h60 v60 h-60 Z M270,200 h60 v60 h-60 Z M330,200 h60 v60 h-60 Z M390,200 h60 v60 h-60 Z M450,200 h60 v60 h-60 Z" style="fill:var(--fill);stroke:var(--line);stroke-width:1.1"/>
+  <path d="M90,80 h30 v30 h-30 Z M120,80 h30 v30 h-30 Z M150,80 h30 v30 h-30 Z M180,80 h30 v30 h-30 Z M90,110 h30 v30 h-30 Z M120,110 h30 v30 h-30 Z M150,110 h30 v30 h-30 Z M180,110 h30 v30 h-30 Z M90,140 h30 v30 h-30 Z M120,140 h30 v30 h-30 Z M150,140 h30 v30 h-30 Z M180,140 h30 v30 h-30 Z M90,170 h30 v30 h-30 Z M120,170 h30 v30 h-30 Z M150,170 h30 v30 h-30 Z M180,170 h30 v30 h-30 Z M330,80 h30 v30 h-30 Z M360,80 h30 v30 h-30 Z M390,80 h30 v30 h-30 Z M420,80 h30 v30 h-30 Z M330,110 h30 v30 h-30 Z M360,110 h30 v30 h-30 Z M390,110 h30 v30 h-30 Z M420,110 h30 v30 h-30 Z M330,140 h30 v30 h-30 Z M360,140 h30 v30 h-30 Z M390,140 h30 v30 h-30 Z M420,140 h30 v30 h-30 Z M330,170 h30 v30 h-30 Z M360,170 h30 v30 h-30 Z M390,170 h30 v30 h-30 Z M420,170 h30 v30 h-30 Z" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="30" y="20" width="480" height="240" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <circle cx="150" cy="140" r="85" style="fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:6 4"/>
+  <circle cx="390" cy="140" r="85" style="fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:6 4"/>
+  <circle cx="150" cy="140" r="4" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="390" cy="140" r="4" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <text x="158" y="132" font-size="13" style="fill:var(--ink);stroke:none">f₁</text>
+  <text x="398" y="132" font-size="13" style="fill:var(--ink);stroke:none">f₂</text>
+  <text x="196" y="62" font-size="12" style="fill:var(--muted);stroke:none">R</text>
+  <rect x="30" y="264" width="14" height="14" style="fill:var(--fill);stroke:var(--line);stroke-width:1.1"/>
+  <text x="50" y="276" font-size="12" style="fill:var(--muted);stroke:none">远端 s = L（d ≥ R，不细分）</text>
+  <rect x="300" y="264" width="14" height="14" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <text x="320" y="276" font-size="12" style="fill:var(--muted);stroke:none">近端 s ≪ L（d → 0，递归细分）</text>
+</svg>
+<figcaption>Figure 7. 两个焦点（虚线圆为影响半径 R）附近的尺寸场：远场 d ≥ R 处 target = L，只保留宏块；焦点附近 target → 0，四叉细分产生密集小块。全部方块仍精确铺满视口、零重叠。</figcaption>
+</figure>
+</section>
+
+<!-- Section 6 -->
+<section id="s6">
+<h2><span class="num">6.</span>LOD 与近无限放大</h2>
+<p>「近无限」放大并非真的存储无限层几何，而是按<strong>屏幕像素尺寸</strong>决定细分深度（level of detail）。生成器只遍历与当前视口相交的宏块：完全落在视口之外的方块直接剪枝，因此任意时刻只生成可见方块。minPx 给出屏幕上的最小方块像素尺寸，(5.3) 中的 s·scale &gt; 2.1·minPx 保证叶块的屏幕尺寸稳定在约 2.1·minPx 附近——这正是 §9 中 10<sup>9</sup> 倍放大下 26,352 个方块<strong>全部</strong>为 7.45 px 的原因：自适应回退把整幅图锁定在同一细分级别上。</p>
+<p>细分不能无限进行，故设有块数上限 maxBlocks（默认 60000）与最大深度 maxDepth（默认 48）。一旦块数触顶，生成器不是截断输出、造成「一半极密、一半被迫大块」的拼接缝，而是把 minPx 乘以 1.8 调粗后<strong>整幅重生成</strong>，最多重试 7 次；若仍触顶，则以 minPx×3 且无块数上限的方式生成一幅完整但较粗的图。这样整个视口始终维持同一细分级别，画面不会随平移而闪烁或出现密度断层。</p>
+<p>复杂度方面，设屏幕像素面积为 A = W<sub>px</sub>·H<sub>px</sub>，若每个叶块至少占约 minPx<sup>2</sup> 像素，则可见块数满足</p>
+<div class="eq"><span class="eqn">(6.1)</span><var>N</var> ≤ <span class="frac"><i><var>A</var></i><b>minPx<sup>2</sup></b></span> · <var>C</var>, &nbsp; <var>C</var> = O(1), &nbsp; <var>D</var><sub>tree</sub> = O(log <span class="frac"><i><var>L</var></i><b>minPx / scale</b></span>).</div>
+<p>每个叶块只被访问常数次，生成与绘制为 O(N)；邻接图的扫描线为 O(N log N)（§8）。由于 N 被<strong>屏幕像素预算</strong>而非世界面积所界定，缩放 10<sup>9</sup> 倍并不会让块数爆炸——它只是把同一个屏幕预算重新分配到更小的世界区域上，这就是「近无限放大」在有限算力下可行的根本原因。</p>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="LOD keeps the subdivision level constant across zoom scales">
+  <text x="30" y="24" font-size="13" style="fill:var(--accent);stroke:none">N ≈ 常数（由像素预算 (6.1) 决定），视口覆盖的世界区域按 1/zoom 缩小</text>
+  <rect x="30" y="50" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M60,50 v120 M90,50 v120 M120,50 v120 M30,80 h120 M30,110 h120 M30,140 h120" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="100" y="100" width="30" height="30" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.4;stroke-dasharray:4 3"/>
+  <text x="30" y="192" font-size="13" style="fill:var(--ink);stroke:none">1×　 W₀</text>
+  <line x1="152" y1="110" x2="228" y2="110" style="fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:6 4"/>
+  <text x="160" y="102" font-size="11" style="fill:var(--muted);stroke:none">zoom in</text>
+  <rect x="230" y="50" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M260,50 v120 M290,50 v120 M320,50 v120 M230,80 h120 M230,110 h120 M230,140 h120" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="300" y="100" width="30" height="30" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.4;stroke-dasharray:4 3"/>
+  <text x="230" y="192" font-size="13" style="fill:var(--ink);stroke:none">10×　 W₀/10</text>
+  <line x1="352" y1="110" x2="428" y2="110" style="fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:6 4"/>
+  <text x="360" y="102" font-size="11" style="fill:var(--muted);stroke:none">zoom in</text>
+  <rect x="430" y="50" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M460,50 v120 M490,50 v120 M520,50 v120 M430,80 h120 M430,110 h120 M430,140 h120" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="500" y="100" width="30" height="30" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.4;stroke-dasharray:4 3"/>
+  <text x="430" y="192" font-size="13" style="fill:var(--ink);stroke:none">10⁹×　 W₀/10⁹</text>
+  <text x="30" y="226" font-size="12" style="fill:var(--muted);stroke:none">虚线小框 = 下一级视口窗口；每层仍是 4×4 的同一细分级别，仅世界尺度改变。</text>
+</svg>
+<figcaption>Figure 8. LOD 缩放层级：zoom 从 1× 增至 10<sup>9</sup>× 时，视口覆盖的世界区域按 1/10<sup>9</sup> 缩小，但屏幕上的细分级别（方块数 N）由像素预算 (6.1) 维持恒定；生成器只展开与视口相交的方块。</figcaption>
+</figure>
+</section>
+
+<!-- Section 7 -->
+<section id="s7">
+<h2><span class="num">7.</span>高精度：double 的极限与 BigDec 残差</h2>
+<p>当相机深入 10<sup>9</sup> 倍时，世界坐标的量级达到约 10<sup>9</sup> ≈ 2<sup>30</sup>，而 IEEE-754 双精度只有 52 位尾数（约 15–16 位十进制有效数字）。此时一个单位最后一位（ULP）为 2<sup>30−52</sup> = 2<sup>−22</sup> ≈ 2.38×10<sup>−7</sup> 世界单位；更糟的是，屏幕上相邻像素对应两个几乎相等的大数相减，发生<strong>灾难性抵消</strong>（catastrophic cancellation），有效位可能骤降到只剩几位。表现为方块边缘抖动、坐标漂移，甚至整列方块塌缩成同一像素。</p>
+<p>项目用基于 BigInt 的定点数 BigDec 保存相机坐标。取 PREC = 80 位十进制精度，比例因子 SCALE = 10<sup>80</sup>，实数 x 以整数 X = round(x·SCALE) 存储：</p>
+<div class="eq"><span class="eqn">(7.1)</span>PREC = 80, &nbsp; SCALE = 10<sup>PREC</sup> = 10<sup>80</sup>, &nbsp; <var>X</var> = ⌊<var>x</var> · SCALE⌉ ∈ ℤ.</div>
+<p>四则运算都化为整数运算：</p>
+<div class="eq"><span class="eqn">(7.2)</span>add(<var>a</var>,<var>b</var>) = <var>a</var> + <var>b</var>, &nbsp; sub(<var>a</var>,<var>b</var>) = <var>a</var> − <var>b</var>, &nbsp; mul(<var>a</var>,<var>b</var>) = <span class="frac"><i><var>a</var> · <var>b</var></i><b>SCALE</b></span>, &nbsp; div(<var>a</var>,<var>b</var>) = <span class="frac"><i><var>a</var> · SCALE</i><b><var>b</var></b></span>.</div>
+<p>加减精确无误差；乘除各引入一次整数除法（截断到 80 位），相对误差小于 10<sup>−80</sup>，远低于任何可显示的像素尺度。于是 0.1 + 0.2 在 BigDec 中精确等于 0.3（§9 断言），而 40 次锚点缩放后 scale 仍为有限值。</p>
+<p>逐块都用 BigInt 绘制太慢，因此采用「<strong>double 主值 + 精确残差</strong>」的混合策略：把高精度相机中心 cx 拆成双精度主值 cx<sub>hi</sub> 与 BigDec 残差 cx<sub>lo</sub>，绘制时</p>
+<div class="eq"><span class="eqn">(7.3)</span>screenX = (<var>wx</var> − <var>cx</var><sub>hi</sub>) · scale + <span class="frac"><i><var>W</var></i><b>2</b></span> − offX, &nbsp; offX = toNumber(<var>cx</var><sub>lo</sub> · scale).</div>
+<p>其中 wx 是方块世界坐标（由视口局部坐标加主值原点得到），W/2 为屏幕中心，offX 是被 double 主值丢弃的低位在屏幕空间的补偿项。方块主体仍走快速的 double 变换路径，每帧只需少量 BigInt 操作把残差补回，从而在 10<sup>9</sup> 倍放大下像素坐标依旧不漂移——图 9 示意了未补偿与补偿后的差别。速度来自 double，精度来自 BigInt，二者各司其职。</p>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="double drift versus BigDec residual compensation">
+  <text x="30" y="30" font-size="13" style="fill:var(--accent);stroke:none">上：double 主值（10⁹×）—— ULP ≈ 2.4×10⁻⁷，灾难性抵消</text>
+  <path d="M60,58 C120,44 160,72 220,56 C280,40 320,74 380,58 C440,42 490,72 556,56" style="fill:none;stroke:var(--accent);stroke-width:1.3;stroke-dasharray:5 4"/>
+  <line x1="60" y1="100" x2="560" y2="100" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="60" y="76" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="125" y="79" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="181" y="74" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="249" y="80" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="305" y="75" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="373" y="79" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="430" y="74" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="497" y="80" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <text x="300" y="122" font-size="11" style="fill:var(--muted);stroke:none">边缘抖动 / 漂移（ideal 边界为虚线，实际方块错位）</text>
+  <line x1="30" y1="136" x2="570" y2="136" style="fill:none;stroke:var(--line);stroke-width:1.1;stroke-dasharray:3 4"/>
+  <text x="30" y="158" font-size="13" style="fill:var(--accent);stroke:none">下：BigDec 主值 + 精确残差 offX —— 边界重新对齐</text>
+  <line x1="60" y1="212" x2="560" y2="212" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="60" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="122" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="184" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="246" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="308" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="370" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="432" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="494" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="30" y="240" font-size="11" style="fill:var(--muted);stroke:none">screenX = (wx − cx_hi)·scale + W/2 − offX，offX = toNumber(cx_lo · scale)</text>
+</svg>
+<figcaption>Figure 9. 10<sup>9</sup> 倍放大下，double 主值因 ULP ≈ 2.4×10<sup>−7</sup> 与灾难性抵消产生像素级漂移（上）；BigDec 以 cx<sub>hi</sub> 承担主值、cx<sub>lo</sub>·scale 作为残差 offX 补回，方块边界重新对齐（下）。</figcaption>
+</figure>
+</section>
+
+<!-- Section 8 -->
+<section id="s8">
+<h2><span class="num">8.</span>邻接图、异色着色与稳定微扰</h2>
+<p>为了让相邻方块可区分，先要构造<strong>共边邻接图</strong>。所有方块边长都是同一最小边长 minS 的整数倍（dyadic 坐标），把坐标归一化为整数键后，按同一条分割线把左右（或上下）两侧的区间分别排序，再用双指针线性归并，即可枚举所有共边对：</p>
+<div class="eq"><span class="eqn">(8.1)</span><var>T</var><sub>build</sub> = O(<var>n</var> log <var>n</var>) &nbsp;(排序主导), &nbsp; |<var>E</var>| = 2<var>n</var> + O(√<var>n</var>).</div>
+<p>§9 中 10<sup>9</sup> 倍放大下得到 |E| = 52,366 条邻接边，且扫描线是精确整数归并，不依赖浮点比较，因此在极小尺度下也不会漏边或多边。</p>
+<p>着色按<strong>边长降序</strong>处理（大方块先定色、小方块后补），对每块施加硬约束：任何相邻两块不得取同一调色板索引：</p>
+<div class="eq"><span class="eqn">(8.2)</span><var>c</var>(<var>u</var>) = min { <var>k</var> ∈ <var>P</var> : ∀ <var>v</var> ∈ <var>N</var>(<var>u</var>), <var>c</var>(<var>v</var>) ≠ <var>k</var> }, &nbsp; <var>P</var> = {0, …, 31}.</div>
+<p>调色板为 <strong>32 色低饱和</strong>色，明度限制在 36%–72%、饱和度适中，并显式排除纯黑、纯白与中性灰（§9 断言 minS = 80、minL = 50）。值得一提的是，四色定理只保证「平面图的邻接异色 4-着色<strong>存在</strong>」，并不给出构造、也不保证视觉上的区分度；本项目用的是更多颜色（32 色）的贪心构造，配合目标色相与稳定微扰，换取稳健且美观的可分辨性。</p>
+<p>为让同一方块在 LOD 变化、平移与缩放之间保持颜色稳定，每个方块以其整数网格坐标 (ix, iy, is) 作<strong>链式 mix32 哈希</strong>：连续三次 32 位雪崩混合，再把两次雪崩结果打包进 53 位整数（2<sup>53</sup>）——这是 double 能精确表示的最大整数范围，故微扰值在任意缩放下都确定、可复现且不坍塌（§9 中 4096 个连续整数坐标的哈希全不重复）。链式混合而非简单异或，是为了避免整数格点上系统性的哈希碰撞。</p>
+<figure>
+<svg viewBox="0 0 600 260" style="width:100%;height:auto" role="img" aria-label="Adjacency graph and adjacent-different colouring">
+  <text x="30" y="22" font-size="13" style="fill:var(--accent);stroke:none">剖分与低饱和着色</text>
+  <text x="320" y="22" font-size="13" style="fill:var(--accent);stroke:none">邻接图 G = (V, E)</text>
+  <rect x="30" y="30" width="55" height="55" style="fill:var(--c1);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="85" y="30" width="55" height="55" style="fill:var(--c2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="140" y="30" width="55" height="55" style="fill:var(--c3);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="195" y="30" width="55" height="55" style="fill:var(--c4);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="30" y="85" width="55" height="55" style="fill:var(--c5);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="85" y="85" width="55" height="55" style="fill:var(--c6);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="140" y="85" width="55" height="55" style="fill:var(--c1);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="195" y="85" width="55" height="55" style="fill:var(--c2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="30" y="140" width="55" height="55" style="fill:var(--c3);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="85" y="140" width="55" height="55" style="fill:var(--c4);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="140" y="140" width="55" height="55" style="fill:var(--c5);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="195" y="140" width="55" height="55" style="fill:var(--c6);stroke:var(--line);stroke-width:1.2"/>
+  <line x1="85" y1="30" x2="85" y2="85" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="30" y="212" font-size="12" style="fill:var(--muted);stroke:none">高亮线 = 一条共享边 ⟹ 图中一条边</text>
+  <text x="30" y="230" font-size="12" style="fill:var(--muted);stroke:none">硬约束：c(u) ≠ c(v)</text>
+  <line x1="347" y1="57" x2="402" y2="57" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="57" x2="457" y2="57" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="57" x2="512" y2="57" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="112" x2="402" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="112" x2="457" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="112" x2="512" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="167" x2="402" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="167" x2="457" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="167" x2="512" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="57" x2="347" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="57" x2="402" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="57" x2="457" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="512" y1="57" x2="512" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="112" x2="347" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="112" x2="402" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="112" x2="457" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="512" y1="112" x2="512" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <circle cx="347" cy="57" r="8" style="fill:var(--c1);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="402" cy="57" r="8" style="fill:var(--c2);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="457" cy="57" r="8" style="fill:var(--c3);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="512" cy="57" r="8" style="fill:var(--c4);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="347" cy="112" r="8" style="fill:var(--c5);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="402" cy="112" r="8" style="fill:var(--c6);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="457" cy="112" r="8" style="fill:var(--c1);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="512" cy="112" r="8" style="fill:var(--c2);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="347" cy="167" r="8" style="fill:var(--c3);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="402" cy="167" r="8" style="fill:var(--c4);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="457" cy="167" r="8" style="fill:var(--c5);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="512" cy="167" r="8" style="fill:var(--c6);stroke:var(--accent-2);stroke-width:1"/>
+  <text x="30" y="250" font-size="12" style="fill:var(--muted);stroke:none">|V| = 12, |E| = 17；四色定理只保证存在，此处为 32 色贪心</text>
+</svg>
+<figcaption>Figure 10. 左：剖分中方块按共边关系构成邻接图，低饱和 32 色调色板保证任一相邻两块异色；右：对应的图 G = (V, E)，顶点为方块、边为共享边，降序贪心满足硬约束 c(u) ≠ c(v)。</figcaption>
+</figure>
+</section>
+
+<!-- Section 9 -->
+<section id="s9">
+<h2><span class="num">9.</span>验证与复杂度</h2>
+<p>项目的 <code>node tests/verify.js</code> 以 <strong>24 项断言</strong>覆盖上述全部机制，且全部通过（ALL PASS）。几何方面：面积守恒比值 1.000000、零空隙（gaps = 0）、零重叠（overlaps = 0）；深空方面：10<sup>9</sup> 倍放大生成 26,352 个方块，其屏幕尺寸<strong>全部</strong>为 7.45 px（minPx = maxPx = 7.45 px，说明 LOD 自适应把整幅图稳定在同一细分级别）；着色方面：52,366 条邻接边中同色对为 0（same = 0），低饱和调色板在全视图保持 30 个不同色相、深放大保持 16 个色相桶，且无黑/白/灰填充（minS = 28.0、minL = 43.0）；哈希方面：4096 个连续整数坐标的哈希值互不重复（unique = 4096）。</p>
+<div class="eq"><span class="eqn">(9.1)</span><span class="frac"><i>通过断言</i><b>总断言</b></span> = <span class="frac"><i>24</i><b>24</b></span> = 100%, &nbsp; gaps = overlaps = same = 0, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> / (<var>W</var><var>H</var>) = 1.000000.</div>
+<p>数值方面：BigDec 满足 0.1 + 0.2 = 0.3、10<sup>−30</sup> × 10<sup>9</sup> = 10<sup>−21</sup>，40 次锚点缩放后 scale ≈ 1.413×10<sup>11</sup> 仍为有限值；尺寸场方面：焦点中心目标尺寸远小于远场（near ≈ 0，far = 256 = L），且远场严格等于宏块边长 L；经典模式方面：euclid 与 network 在 7 种长宽比下都精确铺满整个外框（面积比 1.000000、零空隙），Moroń 九块边长平方和恰为 1056 = 33×32，细分阶数由 0 升至 4 使方块数从 2,638 增至 53,848，44,851 块的密集剖分仍零空隙。这些断言把「宏观正确」与「深空不退化」同时钉死，任何一处回归都会立刻暴露。</p>
+<p>复杂度汇总：生成 O(N)，邻接 O(N log N)，着色 O(N·|P|·deg) 但因 deg 有界而近似 O(N)，验证 O(N log N)；N 由屏幕像素预算 (6.1) 而非世界尺度界定。此外在浏览器中通过 CDP 真实设备模拟对 390×844、360×800、844×390、1600×900 四种视口逐一检查，文档均无横向溢出、公式块可横向滚动而不撑破布局——保证 390 px 手机与 1000 px 桌面同样可读。所有断言都可在离线、零依赖的 Node 环境下复现。</p>
+</section>
+
+<!-- Section 10 -->
+<section id="s10">
+<h2><span class="num">10.</span>参考文献</h2>
+<p>本文所依据的文献跨越 1903 至 1978 年，恰好构成一条从可解性判据、经电网络类比到计算穷举的完整脉络；以下按年代先后列出，便于按图索骥。</p>
+<ol class="refs">
+  <li>M. Dehn, <span class="ref-j">Über die Zerlegung von Rechtecken in Rechtecke</span>, Mathematische Annalen 57 (1903), 314–332.（矩形可正方形剖分性的可加不变量方法，Dehn 不变量的雏形。）</li>
+  <li>Z. Moroń, <span class="ref-j">O rozkładach prostokątów na kwadraty</span>, Przegląd Matematyczno-Fizyczny 3 (1925), 152–153.（首个完美矩形：33×32，九块。）</li>
+  <li>R. Sprague, <span class="ref-j">Beispiel einer Zerlegung des Quadrats in lauter verschiedene Quadrate</span>, Mathematische Zeitschrift 45 (1939), 607–608.（首个完美平方方。）</li>
+  <li>R. L. Brooks, C. A. B. Smith, A. H. Stone, W. T. Tutte, <span class="ref-j">The dissection of rectangles into squares</span>, Duke Mathematical Journal 7 (1940), 312–340.（Smith 图与电网络类比。）</li>
+  <li>J. H. Conway, <span class="ref-j">Mrs. Perkins's Quilt</span>, Proceedings of the Cambridge Philosophical Society 60 (1964), 363–368.（本原剖分与最少块数问题。）</li>
+  <li>A. J. W. Duijvestijn, <span class="ref-j">Simple perfect squared square of lowest order</span>, Journal of Combinatorial Theory, Series B 25 (1978), 240–243.（21 阶、112×112 的最低阶解。）</li>
+  <li>Wikipedia contributors, <span class="ref-j">Squaring the square</span>; <span class="ref-j">Continued fraction</span>; <span class="ref-j">Smith diagram</span>, en.wikipedia.org（条目名，检索线索，非资源依赖）。</li>
+</ol>
+<p class="note">参考文献中的域名仅作检索线索；本文所有样式、脚本与插图均内联，完全离线可读，不发起任何资源请求。</p>
+</section>
+
+<!-- Section 11 -->
+<section id="s11">
+<h2><span class="num">11.</span>附录：参数与交互</h2>
+<p>下表汇总全文出现的主要符号与可调参数，并给出项目控制台的默认值；随后说明与父页面 iframe 的交互约定。图 11 作为补充图版给出一个 21 阶完美平方方的结构示意。</p>
+<table>
+<caption>表 A. 主要参数、含义与取值（默认值对应项目控制台初始状态）。</caption>
+<thead><tr><th>参数</th><th>含义</th><th>取值 / 默认</th></tr></thead>
+<tbody>
+<tr><td><code>theme</code></td><td>URL 查询参数，决定配色；父页面通过 <code>&lt;iframe&gt;</code> 的 <code>?theme=dark</code> 传入</td><td><code>dark</code>（默认）｜<code>light</code></td></tr>
+<tr><td><code>W/H</code></td><td>外框长宽比预设</td><td>1、3:2、16:9、φ、2:3</td></tr>
+<tr><td><code>D</code></td><td>宏块深度，L = 2<sup>D</sup></td><td>3–11，默认 8</td></tr>
+<tr><td><code>n</code></td><td>宏块行数，m = round(ratio·n)</td><td>3–26，默认 12</td></tr>
+<tr><td><code>L = 2<sup>D</sup></code></td><td>宏块边长（二进制精确）</td><td>256（默认）</td></tr>
+<tr><td><code>R</code></td><td>尺寸场影响半径</td><td>0.62 · min(gw, gh)</td></tr>
+<tr><td><code>p</code></td><td>尺寸场指数，见 (5.2)</td><td>1–5，默认 2.4</td></tr>
+<tr><td><code>d(p)</code></td><td>到最近焦点的距离，见 (5.1)</td><td>视口局部坐标</td></tr>
+<tr><td><code>1.35 / 2.1</code></td><td>分裂阈值系数（几何 / 屏幕像素），见 (5.3)</td><td>常量</td></tr>
+<tr><td><code>minPx</code></td><td>最小屏幕像素尺寸；四叉树触顶时 ×1.8 调粗重生成</td><td>默认 2.4 px（经典模式 24 px）</td></tr>
+<tr><td><code>order</code></td><td>经典模式的阶梯细分阶数，控制方块数量，见补充式 (B.1)</td><td>0–6，默认 2</td></tr>
+<tr><td><code>maxBlocks</code></td><td>块数上限</td><td>60000</td></tr>
+<tr><td><code>maxDepth</code></td><td>最大四叉深度</td><td>48</td></tr>
+<tr><td><code>PREC / SCALE</code></td><td>BigDec 定点精度 / 比例，见 (7.1)</td><td>80 / 10<sup>80</sup></td></tr>
+<tr><td><code>|P|</code></td><td>调色板颜色数，见 (8.2)</td><td>32</td></tr>
+<tr><td>断言数</td><td><code>tests/verify.js</code> 断言，见 (9.1)</td><td>24，全部通过</td></tr>
+</tbody>
+</table>
+<p>交互：滚轮或 +/− 缩放，拖拽平移，控制台可切换剖分算法（quad / euclid / network）、长宽比、焦点数、指数 p、调色板与随机种子；<code>?theme=dark|light</code> 由父页面通过 iframe 传入，本文据此在启动时给 <code>&lt;html&gt;</code> 设置 <code>data-theme</code>，两套配色均在 CSS 变量中完整定义。</p>
+<figure>
+<svg viewBox="0 0 600 270" style="width:100%;height:auto" role="img" aria-label="Schematic of a 21st-order perfect squared square">
+  <text x="30" y="24" font-size="13" style="fill:var(--accent);stroke:none">21 阶完美平方方 · 结构示意</text>
+  <path d="M30,35 h100 v100 h-100 Z M130,35 h50 v50 h-50 Z M180,35 h50 v50 h-50 Z M130,85 h50 v50 h-50 Z M180,85 h50 v50 h-50 Z M30,135 h50 v50 h-50 Z M80,135 h50 v50 h-50 Z M30,185 h50 v50 h-50 Z M80,185 h50 v50 h-50 Z M180,135 h50 v50 h-50 Z M130,185 h50 v50 h-50 Z M180,185 h50 v50 h-50 Z" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M130,135 h25 v25 h-25 Z M155,135 h25 v25 h-25 Z M130,160 h25 v25 h-25 Z M155,160 h25 v25 h-25 Z" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="30" y="35" width="200" height="200" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="80" y="90" font-size="16" text-anchor="middle" style="fill:var(--ink);stroke:none">100</text>
+  <text x="155" y="64" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">50</text>
+  <text x="142" y="150" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">25</text>
+  <text x="205" y="160" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">50</text>
+  <line x1="260" y1="24" x2="260" y2="248" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="278" y="46" font-size="15" style="fill:var(--accent);stroke:none">Duijvestijn, 1978</text>
+  <text x="278" y="76" font-size="13" style="fill:var(--ink);stroke:none">最低阶简单完美平方方</text>
+  <text x="278" y="102" font-size="14" style="fill:var(--ink);stroke:none">阶数 n = 21</text>
+  <text x="278" y="128" font-size="14" style="fill:var(--ink);stroke:none">外框 112 × 112</text>
+  <text x="278" y="154" font-size="13" style="fill:var(--ink-soft);stroke:none">21 个整数边长方块，互不相同</text>
+  <text x="278" y="180" font-size="13" style="fill:var(--ink-soft);stroke:none">Σ sᵢ² = 112² = 12544</text>
+  <text x="278" y="206" font-size="13" style="fill:var(--ink-soft);stroke:none">gcd(sᵢ) = 1（本原）</text>
+  <text x="278" y="234" font-size="12" style="fill:var(--muted);stroke:none">计算机穷举证明无更低阶解；本图为简化示意，非精确布局</text>
+</svg>
+<figcaption>Figure 11. 21 阶完美平方方的结构示意：以嵌套的、尺寸悬殊的方块铺满一个正方形，传达「同阶数下所有边长互异」的思想。图中为简化示意，并非 Duijvestijn 1978 的 112×112 精确布局。</figcaption>
+</figure>
+
+<h3>补充 B：两种经典模式的全幅覆盖与阶梯细分</h3>
+<p>除多焦点尺寸场外，项目另提供<strong>欧几里得连分数剖分</strong>与 <strong>Smith 电网络（Moroń 子网络）</strong>两种经典模式。由于 world 的比例恰为整数比 m:n，两者的骨架都是对 W×H 的精确辗转相除剖分，因而骨架本身已严格铺满整个外框，不存在只在中央放置一块 33×32 图案、四周留白的情形。network 模式随后按 Smith 图「一个 1Ω 电阻可由一个子网络替换」的思想，把每个骨架方块细分为 33×33 个元胞：上部 33×32 个元胞由 Moroń 的 9 个互异正方形覆盖，最后一行由 33 个单位方块收尾，共 42 个正方形，且仍精确铺满父方块。</p>
+<p>进一步的密度由 <strong>L 形阶梯细分</strong>提供。令 t = s/k（实现取 k = 3），父方块划分为一个 (k−1)t 的大方块、右侧 k 个 t 方块与下侧 k−1 个 t 方块，合计 2k 个正方形；每次替换都是父块的一个划分，因此任意层数后覆盖率仍严格为 1：</p>
+<div class="eq"><span class="eqn">(B.1)</span> ((<var>k</var>−1)<var>t</var>)<sup>2</sup> + (2<var>k</var>−1)<var>t</var><sup>2</sup> = (<var>k</var><sup>2</sup>−2<var>k</var>+1+2<var>k</var>−1)<var>t</var><sup>2</sup> = <var>k</var><sup>2</sup><var>t</var><sup>2</sup> = <var>s</var><sup>2</sup>, &nbsp; <var>n</var><sub>out</sub> = 2<var>k</var>.</div>
+<p>细分与否只由屏幕像素尺寸 <code>s·scale</code> 与阶数 <code>order</code> 决定：放大时自动展开新层，视口外的块直接剪枝，故方块数可从数百增长到数万而覆盖始终完整。图版 B 依次给出骨架、42 块子网络与 k = 3 的阶梯划分。</p>
+<figure>
+<svg viewBox="0 0 680 230" style="width:100%;height:auto" role="img" aria-label="Euclidean skeleton, Moron sub-network and ladder subdivision">
+  <rect x="0" y="0" width="680" height="230" style="fill:var(--bg-soft);stroke:none"/>
+  <text x="14" y="20" font-size="12" style="fill:var(--accent);stroke:none">(a) 连分数骨架 cf = [1; 2]</text>
+  <rect x="14" y="34" width="120" height="120" style="fill:var(--c1);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="134" y="34" width="60" height="60" style="fill:var(--c2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="134" y="94" width="60" height="60" style="fill:var(--c3);stroke:var(--line);stroke-width:1.2"/>
+  <text x="14" y="172" font-size="11" style="fill:var(--ink-soft);stroke:none">3 块，精确铺满 3:2 矩形</text>
+  <text x="228" y="20" font-size="12" style="fill:var(--accent);stroke:none">(b) Moroń 42 块子网络</text>
+  <rect x="228" y="34" width="150" height="150" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="228" y="34" width="82" height="82" style="fill:var(--c1);stroke:var(--line);stroke-width:1"/>
+  <rect x="310" y="34" width="68" height="68" style="fill:var(--c2);stroke:var(--line);stroke-width:1"/>
+  <rect x="310" y="102" width="32" height="32" style="fill:var(--c3);stroke:var(--line);stroke-width:1"/>
+  <rect x="342" y="102" width="36" height="36" style="fill:var(--c4);stroke:var(--line);stroke-width:1"/>
+  <rect x="228" y="116" width="64" height="64" style="fill:var(--c5);stroke:var(--line);stroke-width:1"/>
+  <rect x="292" y="134" width="18" height="18" style="fill:var(--c6);stroke:var(--line);stroke-width:1"/>
+  <rect x="292" y="152" width="18" height="28" style="fill:var(--c1);stroke:var(--line);stroke-width:1"/>
+  <rect x="310" y="138" width="68" height="42" style="fill:var(--c2);stroke:var(--line);stroke-width:1"/>
+  <g style="fill:var(--fill-2);stroke:var(--line);stroke-width:.7">
+    <rect x="228" y="180" width="12" height="4"/><rect x="242" y="180" width="12" height="4"/><rect x="256" y="180" width="12" height="4"/><rect x="270" y="180" width="12" height="4"/><rect x="284" y="180" width="12" height="4"/><rect x="298" y="180" width="12" height="4"/><rect x="312" y="180" width="12" height="4"/><rect x="326" y="180" width="12" height="4"/><rect x="340" y="180" width="12" height="4"/><rect x="354" y="180" width="12" height="4"/><rect x="366" y="180" width="12" height="4"/>
+  </g>
+  <text x="228" y="202" font-size="11" style="fill:var(--ink-soft);stroke:none">9 互异块 + 33 个收尾单位格</text>
+  <text x="430" y="20" font-size="12" style="fill:var(--accent);stroke:none">(c) L 形阶梯 k = 3 → 2k = 6 块</text>
+  <rect x="430" y="34" width="120" height="120" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="430" y="34" width="80" height="80" style="fill:var(--c4);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="510" y="34" width="40" height="40" style="fill:var(--c1);stroke:var(--line);stroke-width:1"/>
+  <rect x="510" y="74" width="40" height="40" style="fill:var(--c2);stroke:var(--line);stroke-width:1"/>
+  <rect x="510" y="114" width="40" height="40" style="fill:var(--c3);stroke:var(--line);stroke-width:1"/>
+  <rect x="430" y="114" width="40" height="40" style="fill:var(--c5);stroke:var(--line);stroke-width:1"/>
+  <rect x="470" y="114" width="40" height="40" style="fill:var(--c6);stroke:var(--line);stroke-width:1"/>
+  <text x="470" y="78" font-size="12" style="fill:var(--ink);stroke:none">2t</text>
+  <text x="516" y="56" font-size="11" style="fill:var(--ink);stroke:none">t</text>
+  <text x="430" y="172" font-size="11" style="fill:var(--ink-soft);stroke:none">(2t)² + 5t² = 9t² = s²</text>
+  <text x="14" y="220" font-size="11" style="fill:var(--muted);stroke:none">每次替换都是父正方形的划分 ⟹ 任意阶数下覆盖率恒为 100%，零空隙、零重叠。</text>
+</svg>
+<figcaption>图版 B（补充）．经典模式的三步构造：(a) 连分数骨架铺满外框；(b) 每个骨架块嵌入 42 块 Moroń 子网络；(c) L 形阶梯细分把一块变成 2k 块。三者都保持轴对齐正方形的精确铺满。</figcaption>
+</figure>
+</section>
+
+<p class="foot">方形剖分实验室 · 技术论文　|　中英双语 · 零外部依赖 · 内联 SVG 图解　|　版本 1.0</p>
+
+</article>
+</body>
+</html>

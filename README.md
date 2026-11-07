@@ -15,9 +15,10 @@ An interactive, dependency-free visual laboratory for **squaring the rectangle**
 - **Exact tiling.** A dyadic quadtree splits a macro block into four equal squares, or not at all. Splits are disjoint and complete, so coverage is exactly 100 % with zero gaps and zero overlaps.
 - **Near-infinite zoom.** The size field has no world-space lower bound. Level of detail (LOD) is driven by on-screen pixel size, so zooming in keeps revealing new levels instead of running out of geometry.
 - **80-decimal camera arithmetic.** A built-in `BigDec` fixed-point library (BigInt, 80 fractional digits) maintains camera coordinates; rasterisation uses a double main value plus an exact residual correction.
-- **Strict colouring.** A 32-colour palette with no black, white or grey. A greedy graph colouring with a hard constraint guarantees that every pair of edge-adjacent squares differs.
-- **Glassmorphic UI.** Translucent top bar, a control console that collapses into the top bar, a stats HUD, a zoom bar, and a single knowledge/explainer modal. Sky-blue gradient controls, dark/light themes, Chinese/English.
-- **Classic reference modes.** Euclidean continued-fraction dissection and Moroń's 33×32 perfect squared rectangle (9 distinct squares) are kept alongside the field algorithm.
+- **Strict colouring.** A 32-colour low-chroma palette (no black, white or grey) with a smooth large-scale colour flow. A greedy graph colouring with a hard constraint guarantees that every pair of edge-adjacent squares differs.
+- **Glassmorphic UI.** Translucent top bar, a control console that collapses into the top bar, a stats HUD, a zoom bar, and a single knowledge/explainer modal. Barely-there gradient controls (deliberately restrained, never neon), dark/light themes, Chinese/English.
+- **Classic reference modes.** Euclidean continued fractions and the Smith / Moroń electrical-network dissection both cover the *entire* rectangle exactly; an L-shaped ladder substitution lets the square count grow from hundreds to tens of thousands via the *Subdivision order* slider.
+- **Small-paper explainer.** The knowledge modal embeds a bilingual technical essay (`essay.zh.html` / `essay.en.html`): 11 numbered chapters, 27 numbered equations, 12 inline SVG plates, an abstract, references and a parameter appendix.
 - **Mobile first.** Portrait long screens (19.5:9 / 20:9), `dvh`, safe-area insets, 40 px touch targets, two-finger pinch zoom, and a portrait-oriented default world on phones.
 
 ---
@@ -101,7 +102,30 @@ The residual `offX/offY` is the exact `BigDec` difference converted once to a do
 
 ### 3.6 Colouring
 
-An `O(n log n)` sweep-line merge builds the edge-adjacency graph. Tiles are then coloured largest-first from a 32-entry palette (saturation ≥ 52 %, lightness bounded, no achromatic fills). A candidate colour is rejected outright if a coloured neighbour already uses it. A chained `mix32` integer-grid hash (two avalanches packed into an exact 53-bit double) supplies stable per-tile jitter and a viewport-relative hue flow, so dense regions read as a colour field rather than a checkerboard. Colours are cached by integer grid coordinates and remain stable while panning and across LOD changes.
+An `O(n log n)` sweep-line merge builds the edge-adjacency graph. Tiles are then coloured largest-first from a 32-entry low-chroma palette (saturation 28–35 %, lightness in a narrow band, no achromatic fills). A candidate colour is rejected outright if a coloured neighbour already uses it. A chained `mix32` integer-grid hash (two avalanches packed into an exact 53-bit double) supplies stable per-tile jitter and a viewport-relative hue flow, so dense regions read as a colour field rather than a checkerboard. Colours are cached by integer grid coordinates and remain stable while panning and across LOD changes.
+
+### 3.7 Classic modes: exact coverage by substitution
+
+Both classic modes start from an exact Euclidean dissection of the world (whose
+aspect ratio is the integer ratio `m:n`), so the skeleton already covers the
+**whole** frame. The `network` mode then applies the Smith-diagram idea that a
+resistor may be replaced by a sub-network: every skeleton square becomes a
+`33 x 33` lattice whose upper `33 x 32` cells are the nine distinct Moroń
+squares and whose last row is closed by 33 unit squares — 42 squares in total,
+still an exact cover.
+
+Density is then controlled by an L-shaped ladder substitution. With `t = s/k`
+(`k = 3`), one square becomes one `(k-1)t` square plus `2k-1` tiles of side
+`t`: `2k` squares whose areas satisfy
+
+```
+((k-1)t)^2 + (2k-1)t^2 = k^2 t^2 = s^2 .
+```
+
+Every substitution is a partition, so coverage stays at exactly 100 % for any
+number of levels. Splitting is driven by the on-screen size `s * scale` and the
+*Subdivision order* slider: zooming in unfolds new levels, off-screen tiles are
+pruned, and the square count can grow from a few hundred to tens of thousands.
 
 ---
 
@@ -109,9 +133,11 @@ An `O(n log n)` sweep-line merge builds the edge-adjacency graph. Tiles are then
 
 ```
 Square-division/
-├── index.html            # Glass top bar, console, HUD, zoom bar, explainer modal
+├── index.html            # Glass top bar, console, HUD, zoom bar, essay modal
+├── essay.zh.html         # Technical essay, Chinese (self-contained, inline SVG)
+├── essay.en.html         # Technical essay, English (self-contained, inline SVG)
 ├── css/
-│   └── style.css         # Themes, glassmorphism, gradient controls, responsive layout
+│   └── style.css         # Themes, glassmorphism, subtle gradients, responsive layout
 ├── js/
 │   ├── i18n.js           # Chinese / English dictionaries and DOM text binding
 │   ├── bigdec.js         # BigInt fixed-point decimals (80 fractional digits)
@@ -152,6 +178,7 @@ All source comments are written in English; the user-facing Chinese strings live
 | Macro precision | `D` in `L = 2^D` |
 | Palette | Spectrum / Sky / Warm |
 | Random seed | Deterministic colour and focus layout |
+| Subdivision order | Ladder refinement level for `euclid` / `network` (0–6) |
 | Ratio presets | `1:1`, `3:2`, `16:9`, golden ratio, `2:3`, … |
 | Display options | Grid, animation, side labels, focus markers |
 
@@ -171,6 +198,7 @@ Useful for sharing a state or for automated screenshots:
 | `theme` | `theme=light` | `dark` or `light` |
 | `lang` | `lang=en` | `zh` or `en` |
 | `palette` | `palette=warm` | Palette name |
+| `order` | `order=4` | Ladder subdivision order for the classic modes |
 | `console` | `console=0` | Start with the console collapsed |
 | `modal` | `modal=1` | Open the explainer on load |
 
@@ -184,16 +212,17 @@ https://xiaoxu4452.github.io/Square-division/?demo=1&mode=quad&centers=3&theme=d
 
 ## 6. Verification
 
-`node tests/verify.js` asserts 21 invariants, including:
+`node tests/verify.js` asserts 24 invariants, including:
 
 - exact area conservation, zero gaps, zero overlaps;
 - zero same-colour adjacency over ~52 000 edges at 10^9× zoom;
-- no black / white / grey fills and ≥ 20 distinct hues;
+- no black / white / grey fills, 30 distinct hues in the full view and 16 hue buckets at deep zoom;
 - no large flat tiles at 10^9× zoom (all tiles ≈ 7.45 px);
 - 4096 consecutive integer-grid coordinates produce 4096 distinct hashes;
 - strict `target(far) = L` (no small tiles away from foci);
 - `0.1 + 0.2 = 0.3` in `BigDec`, and 40 chained anchored zooms stay finite;
-- the 9-square Moroń `33:32` solution and a non-empty Euclidean dissection.
+- exact full-frame coverage of `euclid` and `network` at seven aspect ratios;
+- nine Moroń sides summing to `1056 = 33 x 32`, monotonic growth of the square count with the subdivision order, and gap-free coverage of a 44,851-square dense classic tiling.
 
 Browser layout was additionally checked with real Chrome DevTools Protocol device emulation at `390 × 844`, `360 × 800`, `844 × 390` and `1600 × 900`, with zero overflowing elements.
 

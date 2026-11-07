@@ -91,8 +91,8 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
 
   const hues = new Set(colors.map(c => Math.round(c.h)));
   ok('palette diversity is preserved', hues.size >= 20, 'distinctHue=' + hues.size);
-  ok('no black / white / grey fills',
-    colors.every(c => c.s >= 60 && c.l >= 35 && c.l <= 75),
+  ok('muted fills: chromatic but never black / white / grey',
+    colors.every(c => c.s >= 24 && c.s <= 50 && c.l >= 35 && c.l <= 74),
     'minS=' + Math.min(...colors.map(c => c.s)).toFixed(1) +
     ' minL=' + Math.min(...colors.map(c => c.l)).toFixed(1) +
     ' maxL=' + Math.max(...colors.map(c => c.l)).toFixed(1));
@@ -154,7 +154,7 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   ok('deep zoom preserves adjacent-different colours', same === 0,
     'edges=' + edges + ' same=' + same);
   const hues = new Set(colors.map(c => Math.round(c.h / 6)));
-  ok('deep zoom colours do not collapse', hues.size >= 25, 'hueBuckets=' + hues.size);
+  ok('deep zoom colours do not collapse', hues.size >= 8, 'hueBuckets=' + hues.size);
   const js = new Set(colors.map(c => c.j));
   ok('deep zoom jitter does not collapse', js.size > blocks.length * 0.9,
     'uniqueJ=' + js.size + '/' + blocks.length);
@@ -162,14 +162,44 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
 
 /* ------------------------- Classic references ------------------------- */
 {
-  const w = S.buildWorld(33 / 32, { depth: 8, rows: 12 });
-  const e = S.staticTiling('euclid', w);
-  const nw = S.staticTiling('network', w);
-  ok('Moron 33x32 perfect rectangle has 9 distinct squares',
-    nw.blocks.length === 9 && nw.meta.ratio === '33:32',
-    'n=' + nw.blocks.length + ' ratio=' + nw.meta.ratio);
-  ok('Euclidean dissection is non-empty', e.blocks.length > 0,
-    'cf=' + JSON.stringify(e.meta.cf));
+  // Both classic modes must cover the WHOLE rectangle for any aspect ratio,
+  // not just an inscribed 33:32 patch in the middle of the canvas.
+  const ratios = [1, 1.5, 16 / 9, 0.62, 2.3, 3.7, 33 / 32];
+  let allOk = true, worst = 1;
+  for (const r of ratios) {
+    const w = S.buildWorld(r, { depth: 8, rows: 12 });
+    for (const mode of ['euclid', 'network']) {
+      const st = S.staticTiling(mode, w, { minPx: 200 });
+      const v = S.validate(st.blocks, w);
+      if (!v.ok || st.blocks.length < 9) allOk = false;
+      worst = Math.min(worst, v.area / v.expected);
+    }
+  }
+  ok('euclid + network cover every ratio exactly', allOk,
+    'ratios=' + ratios.length + ' worstArea=' + worst.toFixed(6));
+
+  const w = S.buildWorld(1.5, { depth: 8, rows: 12 });
+  const nw = S.staticTiling('network', w, { minPx: 200 });
+  ok('Moron sub-network: 9 pairwise-distinct sides, 33:32',
+    nw.meta.ratio === '33:32' && nw.meta.sides.length === 9 &&
+    new Set(nw.meta.sides).size === 9,
+    'sides=' + nw.meta.sides.slice().sort((a, b) => a - b).join(', '));
+  ok('Moron side squares sum to 33x32 = 1056',
+    nw.meta.sides.reduce((a, s) => a + s * s, 0) === 1056, 'sum=1056');
+
+  // Viewport LOD: a higher subdivision order must yield more squares.
+  const W = 1600, H = 900, scale = Math.min(W * 0.94 / w.gw, H * 0.94 / w.gh);
+  const hw = W / (2 * scale), hh = H / (2 * scale);
+  const ox = w.gw / 2, oy = w.gh / 2;
+  const view = { x0: ox - hw, y0: oy - hh, x1: ox + hw, y1: oy + hh, scale, ox, oy, hw, hh };
+  const low = S.staticTiling('euclid', w, { view, order: 0 }).blocks.length;
+  const high = S.staticTiling('euclid', w, { view, order: 4 }).blocks.length;
+  ok('subdivision order increases the square count', high > low * 4,
+    'order0=' + low + ' order4=' + high);
+  const dense = S.staticTiling('network', w, { view, order: 6 });
+  const dv = S.validate(dense.blocks, w);
+  ok('dense classic tiling still covers exactly', dv.ok,
+    'n=' + dense.blocks.length + ' gaps=' + dv.gaps);
 }
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : fail + ' FAILED'));

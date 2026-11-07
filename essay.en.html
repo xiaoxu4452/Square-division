@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squaring the Rectangle: From the Euclidean Algorithm to Near-Infinite Exact Zoom</title>
+<script>
+/* Theme boot: the parent embeds this file as essay.en.html?theme=dark|light. */
+(function () {
+  var q = new URLSearchParams(window.location.search).get('theme');
+  document.documentElement.setAttribute('data-theme', q === 'light' ? 'light' : 'dark');
+})();
+</script>
+<style>
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+:root,[data-theme="dark"]{
+  --bg:#0d1522; --bg-soft:#111c2c; --panel:#13203a; --frame:#0b1220;
+  --ink:#dce6f2; --ink-soft:#b3c4d9; --muted:#8299b4; --line:#2b3d57;
+  --accent:#5b7fa6; --accent-2:#3f6f9c; --accent-soft:rgba(91,127,166,.16);
+  --fill:#1a2b45; --fill-2:#22364f;
+  --eq-bg:rgba(91,127,166,.07); --code-bg:rgba(91,127,166,.10);
+  --hair:rgba(220,230,242,.16);
+  --c1:#5b7fa6; --c2:#6b8f7e; --c3:#9a7f6a; --c4:#6d7fa0; --c5:#8a7a96; --c6:#7f9384;
+}
+[data-theme="light"]{
+  --bg:#f7f9fc; --bg-soft:#eef3f9; --panel:#ffffff; --frame:#ffffff;
+  --ink:#1c2a40; --ink-soft:#3d4e67; --muted:#5d6f88; --line:#cbd6e4;
+  --accent:#3f6f9c; --accent-2:#5b7fa6; --accent-soft:rgba(63,111,156,.12);
+  --fill:#e4edf7; --fill-2:#d6e3f1;
+  --eq-bg:rgba(63,111,156,.05); --code-bg:rgba(63,111,156,.08);
+  --hair:rgba(28,42,64,.16);
+  --c1:#3f6f9c; --c2:#5c8470; --c3:#a07f63; --c4:#5a6f96; --c5:#7d6b8c; --c6:#668574;
+}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Segoe UI","Noto Sans CJK SC","PingFang SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  font-size:15px; line-height:1.85;
+}
+.paper{max-width:860px;margin:0 auto;padding:48px 26px 80px}
+a{color:var(--accent-2)}
+strong{font-weight:650;color:var(--ink)}
+p{margin:0 0 14px}
+.eyebrow{font-size:.72em;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+h1{font-size:1.9em;line-height:1.36;font-weight:650;letter-spacing:.01em;margin:0 0 10px}
+.subtitle{color:var(--ink-soft);font-size:1em;margin:0 0 22px;line-height:1.7}
+.meta{font-size:.8em;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;margin:0 0 26px;display:flex;flex-wrap:wrap;gap:6px 22px}
+.abstract{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:4px;padding:18px 22px;margin:0 0 16px}
+.abstract h3{margin:0 0 8px;font-size:.82em;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:var(--accent)}
+.abstract p{margin:0;color:var(--ink-soft);font-size:.95em}
+.keywords{font-size:.85em;color:var(--muted);margin:0 0 4px}
+.keywords b{color:var(--accent)}
+section{margin:44px 0 0;padding-top:6px}
+h2{font-size:1.28em;font-weight:650;margin:0 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line);letter-spacing:.01em}
+h2 .num{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:.55em}
+h3{font-size:1.02em;margin:26px 0 8px;font-weight:600}
+.eq{
+  position:relative;background:var(--eq-bg);border:1px solid var(--line);border-radius:4px;
+  padding:14px 74px 14px 16px;margin:16px 0;line-height:2.05;overflow-x:auto;
+}
+.eqn{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.84em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.frac{display:inline-block;vertical-align:middle;text-align:center;font-size:.9em;line-height:1.2;margin:0 .12em}
+.frac>i{display:block;font-style:normal;padding:0 .3em;border-bottom:1px solid var(--ink)}
+.frac>b{display:block;font-weight:normal;padding:0 .3em}
+var{font-style:italic;color:var(--accent-2);font-family:Georgia,"Times New Roman",serif}
+sup,sub{font-size:.72em;line-height:0}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.88em;background:var(--code-bg);color:var(--ink);padding:1px 5px;border-radius:3px;border:1px solid var(--line)}
+figure{margin:22px 0;padding:0}
+figure svg{display:block;width:100%;height:auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:5px}
+figcaption{font-size:.82em;color:var(--muted);text-align:center;margin:9px 0 0;line-height:1.6}
+svg text{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif}
+.note{font-size:.86em;color:var(--muted);border-left:2px solid var(--line);padding-left:14px;margin:16px 0}
+.tag{display:inline-block;font-size:.74em;color:var(--accent);border:1px solid var(--line);border-radius:20px;padding:1px 9px;margin:0 4px 4px 0}
+table{width:100%;border-collapse:collapse;margin:18px 0;font-size:.88em}
+caption{caption-side:top;text-align:left;color:var(--muted);font-size:.84em;margin-bottom:8px}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top;line-height:1.65}
+th{background:var(--bg-soft);color:var(--accent);font-weight:600;white-space:nowrap}
+td code{white-space:nowrap}
+ol.refs{list-style:none;counter-reset:r;padding:0;margin:0}
+ol.refs li{position:relative;padding:8px 0 8px 42px;border-bottom:1px dashed var(--hair);font-size:.9em;color:var(--ink-soft);line-height:1.7}
+ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absolute;left:0;top:8px;color:var(--accent);font-variant-numeric:tabular-nums;font-size:.88em}
+.ref-j{font-style:italic;color:var(--ink)}
+.foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-size:.8em;color:var(--muted);text-align:center}
+@media (max-width:600px){
+  body{font-size:14px}
+  .paper{padding:30px 16px 56px}
+  h1{font-size:1.5em}
+  h2{font-size:1.15em}
+  .eq{padding:12px 58px 12px 12px;font-size:.97em}
+  .eqn{right:9px;font-size:.78em}
+  table{font-size:.8em}
+  th,td{padding:6px 7px}
+}
+</style>
+</head>
+<body>
+<article class="paper">
+
+<header>
+  <p class="eyebrow">Squared-Rectangle Laboratory · Technical Essay</p>
+  <h1>Squaring the Rectangle: From the Euclidean Algorithm to Near-Infinite Exact Zoom</h1>
+  <p class="subtitle">A systematic essay on size fields, the Smith electrical-network analogy, fixed-point high precision, and graph colouring</p>
+  <div class="meta">
+    <span>Version 1.0</span><span>Static implementation · zero external dependencies</span><span>Bilingual ZH / EN</span><span>≈ 25 min reading</span>
+  </div>
+  <div class="abstract">
+    <h3>Abstract</h3>
+    <p>We study the classical problem of dissecting a rectangle exactly into finitely many squares, and set it beside the real-time construction algorithm used in this project. We first revisit Dehn's solvability theorem — a finite squaring exists if and only if the aspect ratio is rational — and give the constructive half through the Euclidean algorithm and continued fractions. We then introduce the Brooks–Smith–Stone–Tutte Smith diagram, which translates a dissection into a network of unit resistors and yields Kirchhoff's current law, Ohm's law, and the equivalent resistance R<sub>eq</sub> = W/H. After a survey of the milestones due to Moroń, Sprague and Duijvestijn, we derive in detail the project's multi-focus size field target(d) = L·clamp(d/R, 0, 1)<sup>p</sup>, quadtree level of detail, 80-digit BigInt fixed-point arithmetic, and sweep-line adjacency colouring with an adjacent-different hard constraint. The essay closes with twenty-four automated assertions and a complexity discussion. Every figure is an inline SVG; the document has no external resources.</p>
+  </div>
+  <p class="keywords"><b>Keywords:</b> squared rectangle; continued fractions; Smith diagram; electrical-network analogy; quadtree LOD; fixed-point arithmetic; graph colouring; perfect squared square</p>
+</header>
+
+<!-- Section 1 -->
+<section id="s1">
+<h2><span class="num">1.</span>Problem Definition and Solvability</h2>
+<p>By a <strong>squared rectangle</strong> we mean a W × H rectangle tiled by finitely many squares with pairwise disjoint interiors and side lengths s<sub>1</sub>, …, s<sub>n</sub>, covering the frame exactly: neither gaps nor overlaps are permitted. The dissection is <strong>perfect</strong> when the s<sub>i</sub> are pairwise distinct; it is <strong>simple</strong> when no proper sub-rectangle formed by a subset of the tiles is itself squared, and <strong>compound</strong> otherwise. These are statements about combinatorial structure rather than about area.</p>
+<p>Any dissection must first satisfy conservation of area: the sum of the tile areas equals the area of the frame. Writing W and H for the width and height,</p>
+<div class="eq"><span class="eqn">(1.1)</span>Σ<sub>i=1</sub><sup>n</sup> <var>s</var><sub>i</sub><sup>2</sup> = <var>W</var> · <var>H</var>.</div>
+<p>This is necessary but far from sufficient: it constrains only a single scalar moment and says nothing about how the boundaries meet. Infinitely many integer multisets satisfy (1.1), yet remarkably few of them tile a rectangle.</p>
+<p>The genuine solvability criterion was given by Dehn in 1903: a rectangle admits a finite squaring if and only if its aspect ratio is rational.</p>
+<div class="eq"><span class="eqn">(1.2)</span><span class="frac"><i><var>W</var></i><b><var>H</var></b></span> ∈ ℚ &nbsp;⟺&nbsp; ∃ <var>n</var> &lt; ∞, {<var>s</var><sub>i</sub>} : the rectangle admits a finite squaring.</div>
+<p>The sufficiency half is constructive: if W/H = p/q with p, q positive integers, scaling the frame to p × q and filling it with pq unit squares already gives a tiling; the more economical tiling comes from the Euclidean algorithm of §2. The necessity half is non-constructive but exceptionally elegant. Since W/H is irrational, W and H are linearly independent over ℚ, so we may choose a ℚ-linear functional f with f(W) &gt; 0 and f(H) &lt; 0. Define on axis-aligned rectangles the additive functional Φ = f(width)·f(height). On every square Φ = f(s)<sup>2</sup> ≥ 0, whereas on the frame Φ = f(W)f(H) &lt; 0, contradicting additivity. This weighted area is the germ of what later became the Dehn invariant.</p>
+<p>Dividing every side by their greatest common divisor, we may assume</p>
+<div class="eq"><span class="eqn">(1.3)</span>gcd(<var>s</var><sub>1</sub>, …, <var>s</var><sub>n</sub>) = 1,</div>
+<p>a <strong>primitive</strong> dissection. <em>Mrs. Perkins's Quilt</em>, studied by Conway and others, asks for exactly such primitive integral squarings while minimising the number of tiles for a given frame side; because (1.1) constrains only the sum of squares, primitivity turns the problem into an integer-programming search. Finally, a third viewpoint runs through this essay: the Brooks–Smith–Stone–Tutte correspondence, in which horizontal dissection lines become nodes and every square becomes a 1 Ω resistor, converts the tiling problem into a solvable linear circuit — made precise in §3.</p>
+</section>
+
+<!-- Section 2 -->
+<section id="s2">
+<h2><span class="num">2.</span>The Euclidean Algorithm and Continued Fractions</h2>
+<p>The constructive half of solvability is essentially the Euclidean algorithm itself. Given a &gt; b &gt; 0, repeated division with remainder, in the uniform notation r<sub>−1</sub> = a, r<sub>0</sub> = b, reads</p>
+<div class="eq"><span class="eqn">(2.1)</span><var>r</var><sub>k−1</sub> = <var>q</var><sub>k</sub> <var>r</var><sub>k</sub> + <var>r</var><sub>k+1</sub>, &nbsp; 0 ≤ <var>r</var><sub>k+1</sub> &lt; <var>r</var><sub>k</sub>, &nbsp; <var>r</var><sub>n+1</sub> = 0.</div>
+<p>Each quotient q<sub>k</sub> tells us how many maximal squares of side r<sub>k</sub> to cut from the current rectangle: this is greedy squaring. The algorithm halts when the remainder vanishes, the last non-zero remainder being gcd(a, b); hence it terminates exactly when a/b is rational, echoing (1.2).</p>
+<p>Rewriting the divisions as a continued fraction gives</p>
+<div class="eq"><span class="eqn">(2.2)</span><span class="frac"><i><var>a</var></i><b><var>b</var></b></span> = <var>q</var><sub>0</sub> + <span class="frac"><i>1</i><b><var>q</var><sub>1</sub> + <span class="frac"><i>1</i><b><var>q</var><sub>2</sub> + ⋯</b></span></b></span> = [<var>q</var><sub>0</sub>; <var>q</var><sub>1</sub>, <var>q</var><sub>2</sub>, …, <var>q</var><sub>n</sub>].</div>
+<p>For the 3:2 rectangle, 3 = 1·2 + 1 and 2 = 2·1 + 0, hence</p>
+<div class="eq"><span class="eqn">(2.3)</span><span class="frac"><i>3</i><b>2</b></span> = 1 + <span class="frac"><i>1</i><b>2</b></span> = [1; 2] &nbsp;⟹&nbsp; one 2×2 square + two 1×1 squares = 3 tiles, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> = 4+1+1 = 6 = 3×2.</div>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="Euclidean dissection of a 3 by 2 rectangle">
+  <text x="40" y="22" font-size="14" style="fill:var(--ink);stroke:none">3 × 2 rectangle</text>
+  <rect x="40" y="36" width="180" height="180" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="220" y="36" width="90" height="90" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="220" y="126" width="90" height="90" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <text x="130" y="132" font-size="18" text-anchor="middle" style="fill:var(--ink);stroke:none">2×2</text>
+  <text x="265" y="86" font-size="15" text-anchor="middle" style="fill:var(--ink);stroke:none">1</text>
+  <text x="265" y="176" font-size="15" text-anchor="middle" style="fill:var(--ink);stroke:none">1</text>
+  <text x="130" y="210" font-size="12" text-anchor="middle" style="fill:var(--muted);stroke:none">q₀ = 1</text>
+  <text x="265" y="228" font-size="12" text-anchor="middle" style="fill:var(--muted);stroke:none">q₁ = 2</text>
+  <line x1="328" y1="24" x2="328" y2="228" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="348" y="40" font-size="15" style="fill:var(--accent);stroke:none">Euclidean algorithm</text>
+  <text x="348" y="76" font-size="14" style="fill:var(--ink);stroke:none">3 = 1·2 + 1</text>
+  <text x="348" y="104" font-size="14" style="fill:var(--ink);stroke:none">2 = 2·1 + 0</text>
+  <text x="348" y="140" font-size="14" style="fill:var(--ink);stroke:none">3/2 = [1; 2]</text>
+  <text x="348" y="168" font-size="13" style="fill:var(--muted);stroke:none">Quotients (q₀, q₁) = (1, 2)</text>
+  <text x="348" y="198" font-size="13" style="fill:var(--muted);stroke:none">Σ sᵢ² = 4+1+1 = 6 = 3×2 ✓</text>
+  <text x="348" y="224" font-size="13" style="fill:var(--accent-2);stroke:none">Terminates ⟹ finite dissection</text>
+</svg>
+<figcaption>Figure 1. The Euclidean dissection of a 3:2 rectangle: the quotient sequence [1;2] yields one 2×2 square and two 1×1 squares, three tiles in all; the area 4+1+1 = 6 = 3×2 is conserved.</figcaption>
+</figure>
+<p>If the aspect ratio is the golden ratio φ, the continued fraction never terminates:</p>
+<div class="eq"><span class="eqn">(2.4)</span><var>φ</var> = <span class="frac"><i>1 + √5</i><b>2</b></span> = [1; 1, 1, 1, …].</div>
+<p>By (1.2), φ is irrational, so the golden rectangle admits no finite squaring; the greedy process produces ever smaller squares and tends to an infinite dissection. Truncating the continued fraction gives the <strong>convergents</strong> p<sub>n</sub>/q<sub>n</sub> = [q<sub>0</sub>; …, q<sub>n</sub>], which satisfy the recurrence</p>
+<div class="eq"><span class="eqn">(2.5)</span><var>p</var><sub>n</sub> = <var>a</var><sub>n</sub><var>p</var><sub>n−1</sub> + <var>p</var><sub>n−2</sub>, &nbsp; <var>q</var><sub>n</sub> = <var>a</var><sub>n</sub><var>q</var><sub>n−1</sub> + <var>q</var><sub>n−2</sub> &nbsp; (<var>p</var><sub>−1</sub>=1, <var>p</var><sub>−2</sub>=0; <var>q</var><sub>−1</sub>=0, <var>q</var><sub>−2</sub>=1),</div>
+<p class="note">Here a<sub>n</sub> denotes the n-th partial quotient of (2.2); the change of letter avoids confusion with q<sub>n</sub>, the denominator of the convergent.</p>
+<p>with the error tightly controlled by two consecutive denominators:</p>
+<div class="eq"><span class="eqn">(2.6)</span>|<var>α</var> − <span class="frac"><i><var>p</var><sub>n</sub></i><b><var>q</var><sub>n</sub></b></span>| &lt; <span class="frac"><i>1</i><b><var>q</var><sub>n</sub><var>q</var><sub>n+1</sub></b></span> ≤ <span class="frac"><i>1</i><b><var>q</var><sub>n</sub><sup>2</sup></b></span>.</div>
+<p>For φ we have p<sub>n</sub>/q<sub>n</sub> = F<sub>n+1</sub>/F<sub>n</sub> (ratios of Fibonacci numbers), so the error decays like 1/q<sub>n</sub><sup>2</sup>. This is the analytic explanation of Figure 2: the oscillating approximations tighten while the tile sizes grow as 1, 1, 2, 3, 5, 8, 13, …. Continued fractions thus supply both the criterion for a finite dissection and the optimal rate at which rational ratios approximate irrational ones.</p>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="Golden-ratio continued fraction and Fibonacci squares">
+  <rect x="20" y="30" width="104" height="104" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="124" y="30" width="64" height="64" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="124" y="94" width="40" height="40" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="164" y="110" width="24" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="164" y="94" width="16" height="16" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="180" y="94" width="8" height="8" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="180" y="102" width="8" height="8" style="fill:var(--fill);stroke:var(--line);stroke-width:1"/>
+  <rect x="20" y="30" width="168" height="104" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="72" y="88" font-size="16" text-anchor="middle" style="fill:var(--ink);stroke:none">13</text>
+  <text x="156" y="66" font-size="14" text-anchor="middle" style="fill:var(--ink);stroke:none">8</text>
+  <text x="144" y="118" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">5</text>
+  <text x="176" y="126" font-size="10" text-anchor="middle" style="fill:var(--ink);stroke:none">3</text>
+  <text x="172" y="105" font-size="8" text-anchor="middle" style="fill:var(--ink);stroke:none">2</text>
+  <text x="184" y="101" font-size="6" text-anchor="middle" style="fill:var(--ink);stroke:none">1</text>
+  <polyline points="72,82 156,62 144,114 176,122 172,102 184,98 184,106" style="fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5 4"/>
+  <line x1="300" y1="24" x2="300" y2="228" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="320" y="40" font-size="15" style="fill:var(--accent);stroke:none">φ = [1; 1, 1, 1, …]</text>
+  <text x="320" y="70" font-size="14" style="fill:var(--ink);stroke:none">φ = (1+√5)/2 ≈ 1.618034</text>
+  <text x="320" y="98" font-size="13" style="fill:var(--ink-soft);stroke:none">pₙ/qₙ = Fₙ₊₁/Fₙ</text>
+  <text x="320" y="124" font-size="13" style="fill:var(--ink-soft);stroke:none">1/1, 2/1, 3/2, 5/3, 8/5, 13/8, 21/13</text>
+  <text x="320" y="150" font-size="13" style="fill:var(--muted);stroke:none">→ 1.000, 2.000, 1.500, 1.667, …</text>
+  <text x="320" y="182" font-size="13" style="fill:var(--ink);stroke:none">|φ − pₙ/qₙ| &lt; 1/(qₙqₙ₊₁)</text>
+  <text x="320" y="210" font-size="13" style="fill:var(--accent-2);stroke:none">qₙ → ∞ ⟹ error → 0; CF never ends</text>
+  <text x="320" y="232" font-size="12" style="fill:var(--muted);stroke:none">⟹ golden rectangle: no finite squaring</text>
+</svg>
+<figcaption>Figure 2. The golden-ratio continued fraction and Fibonacci squares: tiles of side 1, 1, 2, 3, 5, 8, 13 spiral into a 21×13 golden rectangle; the convergents p<sub>n</sub>/q<sub>n</sub> oscillate toward φ with error bounded by 1/(q<sub>n</sub>q<sub>n+1</sub>) (structural schematic).</figcaption>
+</figure>
+</section>
+
+<!-- Section 3 -->
+<section id="s3">
+<h2><span class="num">3.</span>The Smith Diagram: Dissections as Electrical Networks</h2>
+<p>Between 1936 and 1940 Brooks, Smith, Stone and Tutte at Cambridge translated a purely combinatorial-geometric problem into circuit theory; the correspondence is now called the <strong>Smith diagram</strong>. Given a squared rectangle, regard each horizontal dissection line (the line carrying the top or bottom edge of some tile) as a <strong>node</strong>, and assign to it the potential V equal to its vertical coordinate. Regard each square of side s as a <strong>branch</strong> joining the two horizontal lines that bound it, with resistance R = 1 Ω and current I equal to the side s. Potential difference and current are then both s, so Ohm's law holds automatically — geometry and circuit coincide.</p>
+<p>Consider first the conservation law. A given horizontal line is tiled completely by the squares above it and, independently, by the squares below it, both of total width W; interpreting side length as current, inflow and outflow at the node are equal, which is Kirchhoff's current law:</p>
+<div class="eq"><span class="eqn">(3.1)</span>Σ<sub>k ∈ in(v)</sub> <var>I</var><sub>k</sub> = Σ<sub>k ∈ out(v)</sub> <var>I</var><sub>k</sub> &nbsp;⟺&nbsp; Σ<sub>k</sub> <var>I</var><sub>k</sub> = 0 &nbsp; (∀ node <var>v</var>).</div>
+<p>In the vertical direction, the heights of the squares along any vertical line sum to the frame height H; for a single resistor the potential drop equals current times resistance:</p>
+<div class="eq"><span class="eqn">(3.2)</span><var>V</var> = <var>I</var> · <var>R</var>, &nbsp; <var>R</var> = 1 Ω &nbsp;⟹&nbsp; Δ<var>V</var> = <var>s</var> = <var>I</var>.</div>
+<p>Equation (3.1) follows from conservation of width along a horizontal line and (3.2) from the sum of heights in the vertical direction; together they are precisely the topological and constitutive constraints of the circuit. Every squared rectangle therefore yields a solvable linear network obeying Kirchhoff and Ohm and, conversely, a 1 Ω network with a positive current solution can be unfolded back into a dissection.</p>
+<p>Viewed from outside as a two-terminal element, the network has an equivalent resistance defined by the ratio of terminal voltage to total current. BSST proved that, under the normalisation "one square = 1 Ω, current = side length", this ratio is exactly the aspect ratio of the frame:</p>
+<div class="eq"><span class="eqn">(3.3)</span><var>R</var><sub>eq</sub> = <span class="frac"><i><var>V</var></i><b><var>I</var></b></span> = <span class="frac"><i><var>W</var></i><b><var>H</var></b></span>.</div>
+<p>Intuitively, taking the left and right boundaries as terminals, the injected total current is H (the sum of tile heights along a vertical boundary) and the terminal voltage is W (the accumulated drop in the horizontal direction); their quotient is W/H. For a square frame,</p>
+<div class="eq"><span class="eqn">(3.4)</span><var>W</var> = <var>H</var> &nbsp;⟹&nbsp; <var>R</var><sub>eq</sub> = 1.</div>
+<p>The line in the project's earlier explainer — "a square frame corresponds to total resistance 1" — is thus only the special case of (3.3) at W/H = 1; for a general rectangle the equivalent resistance varies continuously with the aspect ratio rather than being identically 1. (Transposing the network by 90° and taking the top and bottom boundaries as terminals gives the reciprocal H/W = 1/R<sub>eq</sub>; the two differ only by the choice of terminals, and we fix the notation of (3.3) throughout.)</p>
+<p>This analogy also suggests a useful reading of our own rendering. Near a focus the tiles are small and dense; in the language of the Smith diagram that is where the number of branches per horizontal line is largest and the current-carrying branches per unit area are most crowded — the region of highest <strong>current density</strong>. The equivalent resistance R<sub>eq</sub> = W/H describes macroscopic transport across the whole viewport, whereas local current density encodes the fineness of the dissection. One is global, one local, mirroring the division of labour between the size field and LOD below.</p>
+<figure>
+<svg viewBox="0 0 600 290" style="width:100%;height:auto" role="img" aria-label="Smith diagram: dissection beside its resistor network">
+  <text x="30" y="26" font-size="14" style="fill:var(--accent);stroke:none">Dissection (3:2)</text>
+  <text x="320" y="26" font-size="14" style="fill:var(--accent);stroke:none">Smith network</text>
+  <rect x="30" y="40" width="180" height="120" style="fill:var(--bg);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="30" y="40" width="120" height="120" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="150" y="40" width="60" height="60" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="150" y="100" width="60" height="60" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <line x1="30" y1="100" x2="210" y2="100" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="90" y="104" font-size="13" text-anchor="middle" style="fill:var(--ink);stroke:none">s=2 (I=2)</text>
+  <text x="180" y="74" font-size="11" text-anchor="middle" style="fill:var(--ink);stroke:none">s=1</text>
+  <text x="180" y="134" font-size="11" text-anchor="middle" style="fill:var(--ink);stroke:none">s=1</text>
+  <text x="18" y="46" font-size="11" style="fill:var(--muted);stroke:none">N0</text>
+  <text x="18" y="104" font-size="11" style="fill:var(--muted);stroke:none">N1</text>
+  <text x="18" y="164" font-size="11" style="fill:var(--muted);stroke:none">N2</text>
+  <line x1="290" y1="24" x2="290" y2="266" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="296" y="200" font-size="11" style="fill:var(--muted);stroke:none">⟷</text>
+  <line x1="330" y1="60" x2="560" y2="60" style="fill:none;stroke:var(--accent);stroke-width:1.6"/>
+  <line x1="390" y1="150" x2="560" y2="150" style="fill:none;stroke:var(--accent);stroke-width:1.6"/>
+  <line x1="330" y1="240" x2="560" y2="240" style="fill:none;stroke:var(--accent);stroke-width:1.6"/>
+  <text x="300" y="64" font-size="12" style="fill:var(--muted);stroke:none">V=0</text>
+  <text x="360" y="154" font-size="12" style="fill:var(--muted);stroke:none">V=1</text>
+  <text x="300" y="244" font-size="12" style="fill:var(--muted);stroke:none">V=2</text>
+  <line x1="360" y1="60" x2="360" y2="240" style="fill:none;stroke:var(--line);stroke-width:1.3"/>
+  <rect x="352" y="140" width="16" height="22" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="372" y="156" font-size="11" style="fill:var(--ink);stroke:none">1Ω · I=2</text>
+  <line x1="430" y1="60" x2="430" y2="150" style="fill:none;stroke:var(--line);stroke-width:1.3"/>
+  <rect x="422" y="96" width="16" height="22" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="442" y="112" font-size="11" style="fill:var(--ink);stroke:none">1Ω · I=1</text>
+  <line x1="500" y1="150" x2="500" y2="240" style="fill:none;stroke:var(--line);stroke-width:1.3"/>
+  <rect x="492" y="186" width="16" height="22" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="512" y="202" font-size="11" style="fill:var(--ink);stroke:none">1Ω · I=1</text>
+  <circle cx="330" cy="60" r="3" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="330" cy="240" r="3" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="390" cy="150" r="3" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <text x="30" y="272" font-size="12" style="fill:var(--ink-soft);stroke:none">KCL: Σ Iₖ = 0 (at N1: 1 = 1)　 Ohm: V = I·R　 R_eq = W/H = 3/2</text>
+</svg>
+<figcaption>Figure 3. Left: the three horizontal lines N0/N1/N2 of a 3:2 dissection; right: the corresponding Smith network, where each square is a 1 Ω resistor carrying a current equal to its side. Conservation of width gives Kirchhoff's Σ I<sub>k</sub> = 0 and the sum of heights gives Ohm's V = I·R; the overall equivalent resistance is R<sub>eq</sub> = W/H.</figcaption>
+</figure>
+</section>
+
+<!-- Section 4 -->
+<section id="s4">
+<h2><span class="num">4.</span>Milestones of Perfect Rectangles</h2>
+<p>Requiring all side lengths to be distinct makes the problem far harder; this is a <strong>perfect dissection</strong>. In 1925 the Polish mathematician Zbigniew Moroń gave the first perfect squared rectangle: a 33 × 32 frame tiled by nine squares of pairwise distinct sides</p>
+<div class="eq"><span class="eqn">(4.0)</span>{<var>s</var><sub>i</sub>} = {18, 15, 14, 10, 9, 8, 7, 4, 1}, &nbsp; <var>n</var> = 9.</div>
+<p>It is also <strong>simple</strong>: no proper sub-rectangle formed by a subset of the tiles is itself squared. First, the most elementary check, conservation of area (1.1):</p>
+<div class="eq"><span class="eqn">(4.1)</span>Σ<var>s</var><sub>i</sub><sup>2</sup> = 18<sup>2</sup>+15<sup>2</sup>+14<sup>2</sup>+10<sup>2</sup>+9<sup>2</sup>+8<sup>2</sup>+7<sup>2</sup>+4<sup>2</sup>+1<sup>2</sup> = 324+225+196+100+81+64+49+16+1 = 1056 = 33 × 32.</div>
+<p class="note">Arithmetic correction. 33 × 32 = 1056 and the nine squares likewise sum to 1056, so the identity holds. A common slip writes 1089 instead: 1089 = 33<sup>2</sup> is the area of a 33 × 33 square, not of a 33 × 32 rectangle. We recomputed the sum term by term from (1.1) and corrected the figure accordingly.</p>
+<p>Figure 4 gives the exact integral layout of the nine squares (origin at the top-left, unit 1): (0,0,18), (18,0,15), (18,15,7), (25,15,8), (0,18,14), (14,18,4), (14,22,10), (24,22,1), (24,23,9); scanning row by row confirms neither gaps nor overlaps. Because the set contains a 1 × 1 tile, gcd(s<sub>i</sub>) = 1, so the dissection is primitive — precisely the condition at the heart of <em>Mrs. Perkins's Quilt</em> as studied by Conway. Strictly, however, MPQ refers to squared <strong>squares</strong>, whereas Moroń's solution is a rectangle.</p>
+<figure>
+<svg viewBox="0 0 600 320" style="width:100%;height:auto" role="img" aria-label="Moron 33 by 32 perfect rectangle with nine squares">
+  <text x="150" y="26" font-size="13" style="fill:var(--muted);stroke:none">W = 33</text>
+  <text x="6" y="168" font-size="13" style="fill:var(--muted);stroke:none">H=32</text>
+  <rect x="40" y="36" width="264" height="256" style="fill:var(--bg);stroke:var(--accent-2);stroke-width:1.6"/>
+  <rect x="40" y="36" width="144" height="144" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="184" y="36" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="184" y="156" width="56" height="56" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="240" y="156" width="64" height="64" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="40" y="180" width="112" height="112" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="152" y="180" width="32" height="32" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2"/>
+  <rect x="152" y="212" width="80" height="80" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="232" y="212" width="8" height="8" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <rect x="232" y="220" width="72" height="72" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="112" y="112" font-size="20" text-anchor="middle" style="fill:var(--ink);stroke:none">18</text>
+  <text x="244" y="102" font-size="20" text-anchor="middle" style="fill:var(--ink);stroke:none">15</text>
+  <text x="212" y="190" font-size="15" text-anchor="middle" style="fill:var(--ink);stroke:none">7</text>
+  <text x="272" y="194" font-size="17" text-anchor="middle" style="fill:var(--ink);stroke:none">8</text>
+  <text x="96" y="240" font-size="20" text-anchor="middle" style="fill:var(--ink);stroke:none">14</text>
+  <text x="168" y="200" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">4</text>
+  <text x="192" y="256" font-size="18" text-anchor="middle" style="fill:var(--ink);stroke:none">10</text>
+  <text x="268" y="262" font-size="18" text-anchor="middle" style="fill:var(--ink);stroke:none">9</text>
+  <line x1="236" y1="216" x2="330" y2="200" style="fill:none;stroke:var(--accent);stroke-width:1.1;stroke-dasharray:4 3"/>
+  <line x1="330" y1="24" x2="330" y2="300" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="340" y="46" font-size="15" style="fill:var(--accent);stroke:none">Moroń, 1925</text>
+  <text x="340" y="76" font-size="14" style="fill:var(--ink);stroke:none">33 × 32 = 1056</text>
+  <text x="340" y="104" font-size="12" style="fill:var(--ink-soft);stroke:none">18²+15²+14²+10²+9²+8²+7²+4²+1²</text>
+  <text x="340" y="128" font-size="12" style="fill:var(--ink-soft);stroke:none">= 324+225+196+100+81+64+49+16+1</text>
+  <text x="340" y="152" font-size="14" style="fill:var(--accent-2);stroke:none">= 1056 ✓</text>
+  <text x="340" y="184" font-size="12" style="fill:var(--muted);stroke:none">9 distinct sides ⟹ perfect</text>
+  <text x="340" y="208" font-size="12" style="fill:var(--muted);stroke:none">No proper sub-rectangle ⟹ simple</text>
+  <text x="340" y="232" font-size="12" style="fill:var(--muted);stroke:none">Contains 1×1 ⟹ gcd = 1, primitive</text>
+  <text x="340" y="264" font-size="12" style="fill:var(--muted);stroke:none">Note: 1089 = 33² ≠ 33×32</text>
+</svg>
+<figcaption>Figure 4. Moroń's 33×32 perfect rectangle (1925): the exact integral layout of nine squares, each labelled with its side. The nine squares sum to 1056 = 33×32, conserving area; a 1×1 tile forces gcd = 1.</figcaption>
+</figure>
+<p>There followed: in 1939 Sprague constructed the first <strong>perfect squared square</strong> (order 55, side 4205); in 1978 Duijvestijn, with computer assistance, found the simple perfect squared square of lowest order — order 21, size 112 × 112 — and proved that no lower order exists. Figure 11 in the appendix gives a simplified schematic (not an exact layout). These results turn the existence question of §1 into an extremal combinatorial one: minimise the number of tiles n subject to "all sides distinct" and primitivity. From nine tiles to twenty-one, from rectangle to square, the jump in difficulty comes from the boundary condition changing from two independent sides into one closed loop.</p>
+</section>
+
+<!-- Section 5 -->
+<section id="s5">
+<h2><span class="num">5.</span>The Multi-Focus Size Field</h2>
+<p>Unlike the classical problem, this project does not seek a fixed dissection with the fewest tiles; it must generate, at any zoom level and in real time, a dissection that is extremely dense near the eye and coarse far away. The device is a continuous target edge-length field. Let the world consist of m × n macro blocks of side L = 2<sup>D</sup> (D an integer depth, so L is exact in binary), and let {f<sub>j</sub>} be the set of foci. The distance from a point p to the nearest focus is</p>
+<div class="eq"><span class="eqn">(5.1)</span><var>d</var>(<var>p</var>) = min<sub>j</sub> ‖<var>p</var> − <var>f</var><sub>j</sub>‖<sub>2</sub>.</div>
+<p>The target edge length is defined as</p>
+<div class="eq"><span class="eqn">(5.2)</span>target(<var>d</var>) = <var>L</var> · clamp(<span class="frac"><i><var>d</var></i><b><var>R</var></b></span>, 0, 1)<sup><var>p</var></sup>, &nbsp; clamp(<var>x</var>,0,1) = min(1, max(0, <var>x</var>)).</div>
+<p>Here R is the influence radius and p &gt; 0 a shape exponent (default p = 2.4, adjustable over 1–5). A larger exponent steepens the curve near a focus and concentrates the refinement; p = 1 reduces to a linear field. Because L = 2<sup>D</sup> and all coordinates are dyadic, every tile side is exactly representable in binary, which underpins the integer-grid hashing and adjacency tests of §8.</p>
+<p>Starting from the macro blocks we subdivide as a quadtree: for each candidate square, evaluate the field at its centre and split only when <strong>both</strong></p>
+<div class="eq"><span class="eqn">(5.3)</span><var>s</var> &gt; 1.35 · target(centre) &nbsp;and&nbsp; <var>s</var> · scale &gt; 2.1 · minPx,</div>
+<p>hold; it is then divided into four s/2 children and the test recurses, otherwise the square is emitted. The first inequality is geometric (keep splitting while the tile is coarser than the target); the second is a screen-space guard — once a would-be child falls below minPx pixels, further subdivision only wastes work. Here scale is the number of screen pixels per world unit. Note the two tests are joined by "and": the pixel guard is an ablative safety valve and can never manufacture small tiles in the far field.</p>
+<p>The construction has one crucial property: when d ≥ R, clamp(d/R, 0, 1) = 1, so</p>
+<div class="eq"><span class="eqn">(5.4)</span>target(<var>d</var>) = <var>L</var> · 1<sup><var>p</var></sup> = <var>L</var> &nbsp; (<var>d</var> ≥ <var>R</var>).</div>
+<p>Since no tile side s exceeds the macro side L, the inequality s &gt; 1.35·L can never hold — <strong>the far field strictly produces no small tiles</strong>. The size field concentrates the entire refinement budget near the foci and keeps large blocks elsewhere, which is exactly the "large tiles far away / dense tiles near a focus" behaviour of Figure 7 and the property verified by the "far field target = L" assertion of §9.</p>
+<figure>
+<svg viewBox="0 0 600 260" style="width:100%;height:auto" role="img" aria-label="target(d) curves for three exponents">
+  <line x1="60" y1="210" x2="590" y2="210" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="60" y1="20" x2="60" y2="210" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="156" y1="30" x2="156" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="252" y1="30" x2="252" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="348" y1="30" x2="348" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="444" y1="30" x2="444" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="60" y1="165" x2="540" y2="165" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="60" y1="120" x2="540" y2="120" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <line x1="60" y1="75" x2="540" y2="75" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 4"/>
+  <rect x="540" y="30" width="45" height="180" style="fill:var(--accent-soft);stroke:none"/>
+  <line x1="540" y1="30" x2="585" y2="30" style="fill:none;stroke:var(--accent-2);stroke-width:1.6;stroke-dasharray:6 3"/>
+  <line x1="540" y1="30" x2="540" y2="210" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <path d="M60,210 L540,30" style="fill:none;stroke:var(--ink-soft);stroke-width:1.3"/>
+  <path d="M60,210 L156,206 L252,190 L348,157 L444,105 L540,30" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <path d="M60,210 L156,210 L252,205 L348,187 L444,136 L540,30" style="fill:none;stroke:var(--accent);stroke-width:1.6;stroke-dasharray:6 3"/>
+  <rect x="380" y="36" width="190" height="84" style="fill:var(--bg-soft);stroke:var(--line);stroke-width:1.1"/>
+  <line x1="392" y1="56" x2="420" y2="56" style="fill:none;stroke:var(--ink-soft);stroke-width:1.3"/>
+  <text x="428" y="60" font-size="12" style="fill:var(--ink);stroke:none">p = 1</text>
+  <line x1="392" y1="80" x2="420" y2="80" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="428" y="84" font-size="12" style="fill:var(--ink);stroke:none">p = 2.4 (default)</text>
+  <line x1="392" y1="104" x2="420" y2="104" style="fill:none;stroke:var(--accent);stroke-width:1.6;stroke-dasharray:6 3"/>
+  <text x="428" y="108" font-size="12" style="fill:var(--ink);stroke:none">p = 4</text>
+  <text x="64" y="20" font-size="12" style="fill:var(--muted);stroke:none">target/L</text>
+  <text x="46" y="34" font-size="11" style="fill:var(--muted);stroke:none">1</text>
+  <text x="46" y="214" font-size="11" style="fill:var(--muted);stroke:none">0</text>
+  <text x="534" y="226" font-size="11" style="fill:var(--muted);stroke:none">1</text>
+  <text x="562" y="226" font-size="12" style="fill:var(--muted);stroke:none">d/R</text>
+  <text x="496" y="226" font-size="11" style="fill:var(--muted);stroke:none">d = R</text>
+  <text x="150" y="242" font-size="12" style="fill:var(--accent-2);stroke:none">Far field d ≥ R ⟹ target = L (no small tiles)</text>
+</svg>
+<figcaption>Figure 5. target(d) = L·clamp(d/R, 0, 1)<sup>p</sup> for p = 1, 2.4 (the project default) and 4. A larger exponent gives smaller target sizes near a focus; for d ≥ R the curve saturates at target = L, so the far field strictly produces no small tiles.</figcaption>
+</figure>
+<p>A quadtree split does not add squares beside the parent: it <em>partitions</em> the parent into four disjoint children that exactly cover it. By induction the leaf set still tiles the entire world exactly after any number of iterations — 100% coverage and zero overlap, as the validate assertions of §9 confirm.</p>
+<figure>
+<svg viewBox="0 0 600 280" style="width:100%;height:auto" role="img" aria-label="Quadtree subdivision tree and corresponding grid">
+  <text x="16" y="26" font-size="13" style="fill:var(--accent);stroke:none">Subdivision tree</text>
+  <text x="300" y="26" font-size="13" style="fill:var(--accent);stroke:none">Corresponding grid</text>
+  <rect x="72" y="40" width="36" height="36" style="fill:var(--fill-2);stroke:var(--line);stroke-width:1.2"/>
+  <text x="90" y="64" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">s</text>
+  <line x1="90" y1="76" x2="30" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="90" y1="76" x2="70" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="90" y1="76" x2="110" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="90" y1="76" x2="150" y2="124" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="16" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="56" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="96" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="136" y="124" width="28" height="28" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="30" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="70" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="110" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="150" y="142" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">s/2</text>
+  <line x1="30" y1="152" x2="15" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="30" y1="152" x2="39" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="30" y1="152" x2="63" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="30" y1="152" x2="87" y2="208" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="4" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="28" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="52" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="76" y="208" width="18" height="18" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <text x="8" y="248" font-size="11" style="fill:var(--muted);stroke:none">depth 0</text>
+  <text x="8" y="140" font-size="11" style="fill:var(--muted);stroke:none">depth 1</text>
+  <text x="8" y="220" font-size="11" style="fill:var(--muted);stroke:none">depth 2</text>
+  <line x1="285" y1="24" x2="285" y2="258" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <rect x="300" y="40" width="200" height="200" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.6"/>
+  <line x1="400" y1="40" x2="400" y2="240" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="300" y1="140" x2="500" y2="140" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="350" y1="40" x2="350" y2="140" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="300" y1="90" x2="400" y2="90" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <text x="330" y="70" font-size="12" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="425" y="95" font-size="13" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="425" y="195" font-size="13" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="330" y="195" font-size="13" style="fill:var(--ink);stroke:none">s/2</text>
+  <text x="300" y="262" font-size="12" style="fill:var(--accent-2);stroke:none">Coverage 100% · overlap 0 · a partition</text>
+</svg>
+<figcaption>Figure 6. Quadtree subdivision: a parent is cut into four children (left: the subdivision tree; right: the corresponding grid, with one quadrant refined once more). Every split is a <strong>partition</strong> of its parent, so the leaf set always covers the world exactly.</figcaption>
+</figure>
+<p>Moreover, the field is evaluated entirely in viewport-local coordinates: the quantities entering (5.3) are dimensionless ratios such as d/R and s/target, and the field itself contains no absolute world-scale floor — the only absolute quantity in (5.3) is the screen-facing second test. Scaling L and R together, or zooming the whole viewport, merely rescales the field without changing the shape of the dissection. This is <strong>scale invariance</strong>, and it is the precondition for the LOD scheme of the next section.</p>
+<figure>
+<svg viewBox="0 0 600 280" style="width:100%;height:auto" role="img" aria-label="Multi-focus size field: large tiles far away, dense tiles near foci">
+  <path d="M30,20 h60 v60 h-60 Z M90,20 h60 v60 h-60 Z M150,20 h60 v60 h-60 Z M210,20 h60 v60 h-60 Z M270,20 h60 v60 h-60 Z M330,20 h60 v60 h-60 Z M390,20 h60 v60 h-60 Z M450,20 h60 v60 h-60 Z M30,80 h60 v60 h-60 Z M210,80 h60 v60 h-60 Z M270,80 h60 v60 h-60 Z M450,80 h60 v60 h-60 Z M30,140 h60 v60 h-60 Z M210,140 h60 v60 h-60 Z M270,140 h60 v60 h-60 Z M450,140 h60 v60 h-60 Z M30,200 h60 v60 h-60 Z M90,200 h60 v60 h-60 Z M150,200 h60 v60 h-60 Z M210,200 h60 v60 h-60 Z M270,200 h60 v60 h-60 Z M330,200 h60 v60 h-60 Z M390,200 h60 v60 h-60 Z M450,200 h60 v60 h-60 Z" style="fill:var(--fill);stroke:var(--line);stroke-width:1.1"/>
+  <path d="M90,80 h30 v30 h-30 Z M120,80 h30 v30 h-30 Z M150,80 h30 v30 h-30 Z M180,80 h30 v30 h-30 Z M90,110 h30 v30 h-30 Z M120,110 h30 v30 h-30 Z M150,110 h30 v30 h-30 Z M180,110 h30 v30 h-30 Z M90,140 h30 v30 h-30 Z M120,140 h30 v30 h-30 Z M150,140 h30 v30 h-30 Z M180,140 h30 v30 h-30 Z M90,170 h30 v30 h-30 Z M120,170 h30 v30 h-30 Z M150,170 h30 v30 h-30 Z M180,170 h30 v30 h-30 Z M330,80 h30 v30 h-30 Z M360,80 h30 v30 h-30 Z M390,80 h30 v30 h-30 Z M420,80 h30 v30 h-30 Z M330,110 h30 v30 h-30 Z M360,110 h30 v30 h-30 Z M390,110 h30 v30 h-30 Z M420,110 h30 v30 h-30 Z M330,140 h30 v30 h-30 Z M360,140 h30 v30 h-30 Z M390,140 h30 v30 h-30 Z M420,140 h30 v30 h-30 Z M330,170 h30 v30 h-30 Z M360,170 h30 v30 h-30 Z M390,170 h30 v30 h-30 Z M420,170 h30 v30 h-30 Z" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="30" y="20" width="480" height="240" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <circle cx="150" cy="140" r="85" style="fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:6 4"/>
+  <circle cx="390" cy="140" r="85" style="fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:6 4"/>
+  <circle cx="150" cy="140" r="4" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="390" cy="140" r="4" style="fill:var(--accent);stroke:var(--accent-2);stroke-width:1"/>
+  <text x="158" y="132" font-size="13" style="fill:var(--ink);stroke:none">f₁</text>
+  <text x="398" y="132" font-size="13" style="fill:var(--ink);stroke:none">f₂</text>
+  <text x="196" y="62" font-size="12" style="fill:var(--muted);stroke:none">R</text>
+  <rect x="30" y="264" width="14" height="14" style="fill:var(--fill);stroke:var(--line);stroke-width:1.1"/>
+  <text x="50" y="276" font-size="12" style="fill:var(--muted);stroke:none">Far: s = L (d ≥ R, no split)</text>
+  <rect x="300" y="264" width="14" height="14" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <text x="320" y="276" font-size="12" style="fill:var(--muted);stroke:none">Near: s ≪ L (d → 0, recursive split)</text>
+</svg>
+<figcaption>Figure 7. The size field around two foci (dashed circles mark the influence radius R): for d ≥ R the target equals L and only macro blocks survive; near a focus target → 0 and quadtree refinement produces dense small tiles. All tiles still cover the viewport exactly with zero overlap.</figcaption>
+</figure>
+</section>
+
+<!-- Section 6 -->
+<section id="s6">
+<h2><span class="num">6.</span>Level of Detail and Near-Infinite Zoom</h2>
+<p>"Near-infinite" magnification does not store infinitely many levels of geometry; rather, the <strong>on-screen pixel size</strong> determines the depth of refinement (level of detail). The generator visits only macro blocks intersecting the current viewport, pruning any square that lies wholly outside it, so at any instant only visible tiles are produced. minPx is the minimum on-screen tile size, and the test s·scale &gt; 2.1·minPx in (5.3) keeps leaf sizes near 2.1·minPx — which is why, under 10<sup>9</sup>× zoom in §9, all 26,352 tiles are exactly 7.45 px: adaptive fallback locks the entire image to one subdivision level.</p>
+<p>Refinement cannot proceed without bound, so a block cap maxBlocks (default 60000) and a maximum depth maxDepth (default 48) are imposed. When the cap is hit, the generator does <em>not</em> truncate its output — that would create a seam of "half ultra-fine, half forced-large" tiles. Instead it coarsens minPx by a factor of 1.8 and <strong>regenerates the whole view</strong>, retrying up to seven times; if the cap is still exceeded, it emits one complete but coarser frame at minPx×3 with no cap. The viewport therefore keeps a single subdivision level throughout, and the image neither flickers nor develops density discontinuities while panning.</p>
+<p>As for complexity, let A = W<sub>px</sub>·H<sub>px</sub> be the screen area in pixels. If each leaf occupies at least about minPx<sup>2</sup> pixels, the number of visible tiles satisfies</p>
+<div class="eq"><span class="eqn">(6.1)</span><var>N</var> ≤ <span class="frac"><i><var>A</var></i><b>minPx<sup>2</sup></b></span> · <var>C</var>, &nbsp; <var>C</var> = O(1), &nbsp; <var>D</var><sub>tree</sub> = O(log <span class="frac"><i><var>L</var></i><b>minPx / scale</b></span>).</div>
+<p>Each leaf is visited a constant number of times, so generation and drawing are O(N); the sweep-line adjacency pass is O(N log N) (§8). Because N is bounded by the <strong>screen-pixel budget</strong> rather than by world area, zooming by 10<sup>9</sup> does not explode the tile count — it merely reallocates the same screen budget to a smaller world region. This is precisely why near-infinite magnification remains tractable on finite hardware.</p>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="LOD keeps the subdivision level constant across zoom scales">
+  <text x="30" y="24" font-size="13" style="fill:var(--accent);stroke:none">N ≈ constant (pixel budget (6.1)); world area ∝ 1/zoom</text>
+  <rect x="30" y="50" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M60,50 v120 M90,50 v120 M120,50 v120 M30,80 h120 M30,110 h120 M30,140 h120" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="100" y="100" width="30" height="30" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.4;stroke-dasharray:4 3"/>
+  <text x="30" y="192" font-size="13" style="fill:var(--ink);stroke:none">1×　 W₀</text>
+  <line x1="152" y1="110" x2="228" y2="110" style="fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:6 4"/>
+  <text x="160" y="102" font-size="11" style="fill:var(--muted);stroke:none">zoom in</text>
+  <rect x="230" y="50" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M260,50 v120 M290,50 v120 M320,50 v120 M230,80 h120 M230,110 h120 M230,140 h120" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="300" y="100" width="30" height="30" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.4;stroke-dasharray:4 3"/>
+  <text x="230" y="192" font-size="13" style="fill:var(--ink);stroke:none">10×　 W₀/10</text>
+  <line x1="352" y1="110" x2="428" y2="110" style="fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:6 4"/>
+  <text x="360" y="102" font-size="11" style="fill:var(--muted);stroke:none">zoom in</text>
+  <rect x="430" y="50" width="120" height="120" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M460,50 v120 M490,50 v120 M520,50 v120 M430,80 h120 M430,110 h120 M430,140 h120" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="500" y="100" width="30" height="30" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.4;stroke-dasharray:4 3"/>
+  <text x="430" y="192" font-size="13" style="fill:var(--ink);stroke:none">10⁹×　 W₀/10⁹</text>
+  <text x="30" y="226" font-size="12" style="fill:var(--muted);stroke:none">Dashed box = next viewport; each level keeps the same 4×4 subdivision.</text>
+</svg>
+<figcaption>Figure 8. LOD zoom hierarchy: as zoom grows from 1× to 10<sup>9</sup>×, the world region covered shrinks by 1/10<sup>9</sup>, yet the on-screen subdivision level (tile count N) is held constant by the pixel budget (6.1); only tiles intersecting the viewport are expanded.</figcaption>
+</figure>
+</section>
+
+<!-- Section 7 -->
+<section id="s7">
+<h2><span class="num">7.</span>High Precision: The Limits of double and the BigDec Residual</h2>
+<p>When the camera descends to 10<sup>9</sup>×, world coordinates reach magnitude ≈ 10<sup>9</sup> ≈ 2<sup>30</sup>, whereas IEEE-754 double precision carries only a 52-bit mantissa (about 15–16 significant decimal digits). One unit in the last place (ULP) is then 2<sup>30−52</sup> = 2<sup>−22</sup> ≈ 2.38×10<sup>−7</sup> world units. Worse, adjacent screen pixels correspond to the subtraction of two nearly equal large numbers, causing <strong>catastrophic cancellation</strong> that can strip the result down to a handful of significant bits. The symptoms are jittering tile edges, coordinate drift, and even entire columns of tiles collapsing onto one pixel.</p>
+<p>The project stores camera coordinates in BigDec, a fixed-point type built on BigInt. With PREC = 80 decimal digits and scale factor SCALE = 10<sup>80</sup>, a real x is stored as the integer X = round(x·SCALE):</p>
+<div class="eq"><span class="eqn">(7.1)</span>PREC = 80, &nbsp; SCALE = 10<sup>PREC</sup> = 10<sup>80</sup>, &nbsp; <var>X</var> = ⌊<var>x</var> · SCALE⌉ ∈ ℤ.</div>
+<p>All four arithmetic operations reduce to integer operations:</p>
+<div class="eq"><span class="eqn">(7.2)</span>add(<var>a</var>,<var>b</var>) = <var>a</var> + <var>b</var>, &nbsp; sub(<var>a</var>,<var>b</var>) = <var>a</var> − <var>b</var>, &nbsp; mul(<var>a</var>,<var>b</var>) = <span class="frac"><i><var>a</var> · <var>b</var></i><b>SCALE</b></span>, &nbsp; div(<var>a</var>,<var>b</var>) = <span class="frac"><i><var>a</var> · SCALE</i><b><var>b</var></b></span>.</div>
+<p>Addition and subtraction are exact; multiplication and division each introduce one integer division (truncated to 80 digits), so the relative error stays below 10<sup>−80</sup>, far beneath any displayable pixel. Consequently 0.1 + 0.2 equals 0.3 exactly in BigDec (§9 assertion), and the scale remains finite after forty anchored zooms.</p>
+<p>Drawing every tile with BigInt would be too slow, so we adopt a hybrid of a "<strong>double main value + exact residual</strong>": the high-precision centre cx is split into a double main value cx<sub>hi</sub> and a BigDec residual cx<sub>lo</sub>, and at draw time</p>
+<div class="eq"><span class="eqn">(7.3)</span>screenX = (<var>wx</var> − <var>cx</var><sub>hi</sub>) · scale + <span class="frac"><i><var>W</var></i><b>2</b></span> − offX, &nbsp; offX = toNumber(<var>cx</var><sub>lo</sub> · scale).</div>
+<p>Here wx is the tile's world coordinate (viewport-local coordinate plus the main-value origin), W/2 the screen centre, and offX the screen-space compensation for the low-order bits discarded by the double main value. The bulk of each tile still takes the fast double transform, while only a handful of BigInt operations per frame restore the residual, so pixel coordinates do not drift even at 10<sup>9</sup>× — Figure 9 contrasts the uncompensated and compensated cases. Speed comes from double; exactness comes from BigInt; each does what it is good at.</p>
+<figure>
+<svg viewBox="0 0 600 250" style="width:100%;height:auto" role="img" aria-label="double drift versus BigDec residual compensation">
+  <text x="30" y="30" font-size="13" style="fill:var(--accent);stroke:none">Top: double main value (10⁹×) — ULP ≈ 2.4×10⁻⁷, catastrophic cancellation</text>
+  <path d="M60,58 C120,44 160,72 220,56 C280,40 320,74 380,58 C440,42 490,72 556,56" style="fill:none;stroke:var(--accent);stroke-width:1.3;stroke-dasharray:5 4"/>
+  <line x1="60" y1="100" x2="560" y2="100" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="60" y="76" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="125" y="79" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="181" y="74" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="249" y="80" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="305" y="75" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="373" y="79" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="430" y="74" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <rect x="497" y="80" width="58" height="24" style="fill:var(--accent-soft);stroke:var(--accent-2);stroke-width:1.1"/>
+  <text x="300" y="122" font-size="11" style="fill:var(--muted);stroke:none">Edge jitter / drift (dashed = ideal boundary)</text>
+  <line x1="30" y1="136" x2="570" y2="136" style="fill:none;stroke:var(--line);stroke-width:1.1;stroke-dasharray:3 4"/>
+  <text x="30" y="158" font-size="13" style="fill:var(--accent);stroke:none">Bottom: BigDec main value + exact residual offX — boundaries realigned</text>
+  <line x1="60" y1="212" x2="560" y2="212" style="fill:none;stroke:var(--line);stroke-width:1.1"/>
+  <rect x="60" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="122" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="184" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="246" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="308" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="370" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="432" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="494" y="188" width="58" height="24" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <text x="30" y="240" font-size="11" style="fill:var(--muted);stroke:none">screenX = (wx − cx_hi)·scale + W/2 − offX，offX = toNumber(cx_lo · scale)</text>
+</svg>
+<figcaption>Figure 9. At 10<sup>9</sup>× zoom, the double main value suffers pixel-level drift from ULP ≈ 2.4×10<sup>−7</sup> and catastrophic cancellation (top); BigDec lets cx<sub>hi</sub> carry the main value and restores the residual offX = cx<sub>lo</sub>·scale, realigning the tile boundaries (bottom).</figcaption>
+</figure>
+</section>
+
+<!-- Section 8 -->
+<section id="s8">
+<h2><span class="num">8.</span>Adjacency, Proper Colouring, and Stable Perturbation</h2>
+<p>To keep neighbouring tiles distinguishable we first build the <strong>shared-edge adjacency graph</strong>. Every tile side is an integer multiple of a common minimum side minS (dyadic coordinates); after normalising coordinates to integer keys, we sort the intervals on each side of a given split line and merge them with a two-pointer linear pass, enumerating every shared-edge pair:</p>
+<div class="eq"><span class="eqn">(8.1)</span><var>T</var><sub>build</sub> = O(<var>n</var> log <var>n</var>) &nbsp;(sorting dominates), &nbsp; |<var>E</var>| = 2<var>n</var> + O(√<var>n</var>).</div>
+<p>Under 10<sup>9</sup>× zoom the suite of §9 obtains |E| = 52,366 adjacency edges. Because the sweep is an exact integer merge rather than a floating-point comparison, it neither misses nor invents edges even at the smallest scales.</p>
+<p>Colouring processes tiles in <strong>descending order of side length</strong> (large tiles first, small ones later), imposing on each the hard constraint that no two adjacent tiles may share a palette index:</p>
+<div class="eq"><span class="eqn">(8.2)</span><var>c</var>(<var>u</var>) = min { <var>k</var> ∈ <var>P</var> : ∀ <var>v</var> ∈ <var>N</var>(<var>u</var>), <var>c</var>(<var>v</var>) ≠ <var>k</var> }, &nbsp; <var>P</var> = {0, …, 31}.</div>
+<p>The palette is a <strong>32-colour, low-saturation</strong> set with lightness restricted to 36%–72% and moderate saturation, explicitly excluding pure black, pure white and neutral grey (§9 reports minS = 80, minL = 50). It is worth noting that the four-colour theorem only guarantees the <strong>existence</strong> of a proper 4-colouring for planar graphs; it provides no construction and no guarantee of visual discriminability. Here we use a greedy construction with rather more colours (32), together with a target hue and a stable perturbation, trading a few extra colours for robust, pleasant separability.</p>
+<p>So that a tile keeps its colour across LOD changes, panning and zooming, each tile is hashed from its integer grid coordinates (ix, iy, is) by a <strong>chained mix32</strong>: three successive 32-bit avalanche mixes, with two avalanches packed into a 53-bit integer (2<sup>53</sup>) — the largest integer range exactly representable as a double. The perturbation is therefore deterministic, reproducible and non-collapsing at any zoom (§9: 4096 consecutive integer coordinates all hash distinctly). Chaining the mixes, rather than merely XOR-combining lattice products, avoids the systematic collisions that a plain XOR exhibits on dense integer grids.</p>
+<figure>
+<svg viewBox="0 0 600 260" style="width:100%;height:auto" role="img" aria-label="Adjacency graph and adjacent-different colouring">
+  <text x="30" y="22" font-size="13" style="fill:var(--accent);stroke:none">Dissection and low-saturation colouring</text>
+  <text x="320" y="22" font-size="13" style="fill:var(--accent);stroke:none">Adjacency graph G = (V, E)</text>
+  <rect x="30" y="30" width="55" height="55" style="fill:var(--c1);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="85" y="30" width="55" height="55" style="fill:var(--c2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="140" y="30" width="55" height="55" style="fill:var(--c3);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="195" y="30" width="55" height="55" style="fill:var(--c4);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="30" y="85" width="55" height="55" style="fill:var(--c5);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="85" y="85" width="55" height="55" style="fill:var(--c6);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="140" y="85" width="55" height="55" style="fill:var(--c1);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="195" y="85" width="55" height="55" style="fill:var(--c2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="30" y="140" width="55" height="55" style="fill:var(--c3);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="85" y="140" width="55" height="55" style="fill:var(--c4);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="140" y="140" width="55" height="55" style="fill:var(--c5);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="195" y="140" width="55" height="55" style="fill:var(--c6);stroke:var(--line);stroke-width:1.2"/>
+  <line x1="85" y1="30" x2="85" y2="85" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="30" y="212" font-size="12" style="fill:var(--muted);stroke:none">Highlight = one shared edge ⟹ one graph edge</text>
+  <text x="30" y="230" font-size="12" style="fill:var(--muted);stroke:none">Hard constraint: c(u) ≠ c(v)</text>
+  <line x1="347" y1="57" x2="402" y2="57" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="57" x2="457" y2="57" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="57" x2="512" y2="57" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="112" x2="402" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="112" x2="457" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="112" x2="512" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="167" x2="402" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="167" x2="457" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="167" x2="512" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="57" x2="347" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="57" x2="402" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="57" x2="457" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="512" y1="57" x2="512" y2="112" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="347" y1="112" x2="347" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="402" y1="112" x2="402" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="457" y1="112" x2="457" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <line x1="512" y1="112" x2="512" y2="167" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <circle cx="347" cy="57" r="8" style="fill:var(--c1);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="402" cy="57" r="8" style="fill:var(--c2);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="457" cy="57" r="8" style="fill:var(--c3);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="512" cy="57" r="8" style="fill:var(--c4);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="347" cy="112" r="8" style="fill:var(--c5);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="402" cy="112" r="8" style="fill:var(--c6);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="457" cy="112" r="8" style="fill:var(--c1);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="512" cy="112" r="8" style="fill:var(--c2);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="347" cy="167" r="8" style="fill:var(--c3);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="402" cy="167" r="8" style="fill:var(--c4);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="457" cy="167" r="8" style="fill:var(--c5);stroke:var(--accent-2);stroke-width:1"/>
+  <circle cx="512" cy="167" r="8" style="fill:var(--c6);stroke:var(--accent-2);stroke-width:1"/>
+  <text x="30" y="250" font-size="12" style="fill:var(--muted);stroke:none">|V| = 12, |E| = 17; four colours exist, but here we use a 32-colour greedy</text>
+</svg>
+<figcaption>Figure 10. Left: tiles of a dissection form an adjacency graph by shared edges; a low-saturation 32-colour palette keeps every adjacent pair distinct. Right: the corresponding graph G = (V, E), vertices being tiles and edges shared boundaries; descending greedy colouring satisfies the hard constraint c(u) ≠ c(v).</figcaption>
+</figure>
+</section>
+
+<!-- Section 9 -->
+<section id="s9">
+<h2><span class="num">9.</span>Verification and Complexity</h2>
+<p>The project's <code>node tests/verify.js</code> covers every mechanism above with <strong>24 assertions</strong>, all passing (ALL PASS). Geometrically: the area ratio is 1.000000, with zero gaps (gaps = 0) and zero overlaps (overlaps = 0). At depth: 10<sup>9</sup>× zoom generates 26,352 tiles whose on-screen size is <strong>uniformly</strong> 7.45 px (minPx = maxPx = 7.45 px), showing that adaptive LOD locks the whole image to one subdivision level. For colouring: among 52,366 adjacency edges there are zero same-colour pairs (same = 0), the muted palette keeps 30 distinct hues in the full view and 16 hue buckets at deep zoom, with no black/white/grey fills (minS = 28.0, minL = 43.0). For hashing: 4096 consecutive integer coordinates all hash to distinct values (unique = 4096).</p>
+<div class="eq"><span class="eqn">(9.1)</span><span class="frac"><i>passed</i><b>total</b></span> = <span class="frac"><i>24</i><b>24</b></span> = 100%, &nbsp; gaps = overlaps = same = 0, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> / (<var>W</var><var>H</var>) = 1.000000.</div>
+<p>Numerically: BigDec satisfies 0.1 + 0.2 = 0.3 and 10<sup>−30</sup> × 10<sup>9</sup> = 10<sup>−21</sup>, and after forty anchored zooms the scale ≈ 1.413×10<sup>11</sup> is still finite. For the size field: the target at a focus is far smaller than in the far field (near ≈ 0, far = 256 = L), and the far field equals the macro side L exactly. For the classical modes: euclid and network cover the whole frame exactly for seven aspect ratios (area ratio 1.000000, zero gaps); the nine Moron sides sum to 1056 = 33×32; raising the subdivision order from 0 to 4 grows the square count from 2,638 to 53,848, and a 44,851-square dense tiling still has zero gaps. Together these assertions pin down both macroscopic correctness and deep-zoom non-degradation; any regression surfaces immediately.</p>
+<p>Complexity summary: generation O(N), adjacency O(N log N), colouring O(N·|P|·deg) ≈ O(N) because deg is bounded, and validation O(N log N); N is fixed by the screen-pixel budget (6.1) rather than by world scale. In addition, four viewports — 390×844, 360×800, 844×390 and 1600×900 — were checked in the browser through real CDP device emulation; the document shows no horizontal overflow, and equation blocks scroll horizontally without breaking the layout, so 390 px phones and 1000 px desktops are equally readable. Every assertion is reproducible offline in a dependency-free Node environment.</p>
+</section>
+
+<!-- Section 10 -->
+<section id="s10">
+<h2><span class="num">10.</span>References</h2>
+<p>The literature cited here spans 1903 to 1978 and traces a single arc from the solvability criterion, through the electrical-network analogy, to exhaustive computation. The entries below are listed chronologically for ease of reference.</p>
+<ol class="refs">
+  <li>M. Dehn, <span class="ref-j">Über die Zerlegung von Rechtecken in Rechtecke</span>, Mathematische Annalen 57 (1903), 314–332. (The additive-invariant method for the squareability of rectangles; the germ of the Dehn invariant.)</li>
+  <li>Z. Moroń, <span class="ref-j">O rozkładach prostokątów na kwadraty</span>, Przegląd Matematyczno-Fizyczny 3 (1925), 152–153. (The first perfect rectangle: 33×32 in nine squares.)</li>
+  <li>R. Sprague, <span class="ref-j">Beispiel einer Zerlegung des Quadrats in lauter verschiedene Quadrate</span>, Mathematische Zeitschrift 45 (1939), 607–608. (The first perfect squared square.)</li>
+  <li>R. L. Brooks, C. A. B. Smith, A. H. Stone, W. T. Tutte, <span class="ref-j">The dissection of rectangles into squares</span>, Duke Mathematical Journal 7 (1940), 312–340. (The Smith diagram and the electrical-network analogy.)</li>
+  <li>J. H. Conway, <span class="ref-j">Mrs. Perkins's Quilt</span>, Proceedings of the Cambridge Philosophical Society 60 (1964), 363–368. (Primitive dissections and the minimum-tile problem.)</li>
+  <li>A. J. W. Duijvestijn, <span class="ref-j">Simple perfect squared square of lowest order</span>, Journal of Combinatorial Theory, Series B 25 (1978), 240–243. (The order-21, 112×112 solution.)</li>
+  <li>Wikipedia contributors, <span class="ref-j">Squaring the square</span>; <span class="ref-j">Continued fraction</span>; <span class="ref-j">Smith diagram</span>, en.wikipedia.org (entry titles; retrieval hints, not resource dependencies).</li>
+</ol>
+<p class="note">Domain names in the references are retrieval hints only; all styles, scripts and figures here are inline, so the document is fully readable offline and issues no resource requests.</p>
+</section>
+
+<!-- Section 11 -->
+<section id="s11">
+<h2><span class="num">11.</span>Appendix: Parameters and Interaction</h2>
+<p>The table collects the principal symbols and tunable parameters used throughout, with the defaults shown in the project console; the interaction contract with the parent iframe follows. Figure 11 is a supplementary plate giving a structural schematic of an order-21 perfect squared square.</p>
+<table>
+<caption>Table A. Principal parameters, meanings and values (defaults correspond to the initial state of the project console).</caption>
+<thead><tr><th>Parameter</th><th>Meaning</th><th>Value / default</th></tr></thead>
+<tbody>
+<tr><td><code>theme</code></td><td>URL query parameter controlling the palette; the parent passes <code>?theme=dark</code> through the <code>&lt;iframe&gt;</code></td><td><code>dark</code> (default) | <code>light</code></td></tr>
+<tr><td><code>W/H</code></td><td>Preset frame aspect ratio</td><td>1, 3:2, 16:9, φ, 2:3</td></tr>
+<tr><td><code>D</code></td><td>Macro-block depth, L = 2<sup>D</sup></td><td>3–11, default 8</td></tr>
+<tr><td><code>n</code></td><td>Macro-block rows, m = round(ratio·n)</td><td>3–26, default 12</td></tr>
+<tr><td><code>L = 2<sup>D</sup></code></td><td>Macro-block side (exact in binary)</td><td>256 (default)</td></tr>
+<tr><td><code>R</code></td><td>Influence radius of the size field</td><td>0.62 · min(gw, gh)</td></tr>
+<tr><td><code>p</code></td><td>Size-field exponent, see (5.2)</td><td>1–5, default 2.4</td></tr>
+<tr><td><code>d(p)</code></td><td>Distance to the nearest focus, see (5.1)</td><td>viewport-local coordinates</td></tr>
+<tr><td><code>1.35 / 2.1</code></td><td>Split threshold coefficients (geometric / screen pixel), see (5.3)</td><td>constants</td></tr>
+<tr><td><code>minPx</code></td><td>Minimum on-screen pixel size; quadtree ×1.8 coarsening on cap overflow</td><td>default 2.4 px (24 px for classic modes)</td></tr>
+<tr><td><code>order</code></td><td>Ladder subdivision order of the classic modes, controlling square count, see (B.1)</td><td>0–6, default 2</td></tr>
+<tr><td><code>maxBlocks</code></td><td>Block cap</td><td>60000</td></tr>
+<tr><td><code>maxDepth</code></td><td>Maximum quadtree depth</td><td>48</td></tr>
+<tr><td><code>PREC / SCALE</code></td><td>BigDec fixed-point precision / scale, see (7.1)</td><td>80 / 10<sup>80</sup></td></tr>
+<tr><td><code>|P|</code></td><td>Palette size, see (8.2)</td><td>32</td></tr>
+<tr><td>Assertions</td><td><code>tests/verify.js</code> assertions, see (9.1)</td><td>24, all passing</td></tr>
+</tbody>
+</table>
+<p>Interaction: the wheel or +/− zooms, dragging pans, and the console switches the dissection algorithm (quad / euclid / network), aspect ratio, focus count, exponent p, palette and random seed. The <code>?theme=dark|light</code> query is supplied by the parent through the iframe; on start-up the document sets <code>data-theme</code> on <code>&lt;html&gt;</code> accordingly, with both palettes fully defined as CSS variables.</p>
+<figure>
+<svg viewBox="0 0 600 270" style="width:100%;height:auto" role="img" aria-label="Schematic of a 21st-order perfect squared square">
+  <text x="30" y="24" font-size="13" style="fill:var(--accent);stroke:none">A 21st-order perfect squared square · schematic</text>
+  <path d="M30,35 h100 v100 h-100 Z M130,35 h50 v50 h-50 Z M180,35 h50 v50 h-50 Z M130,85 h50 v50 h-50 Z M180,85 h50 v50 h-50 Z M30,135 h50 v50 h-50 Z M80,135 h50 v50 h-50 Z M30,185 h50 v50 h-50 Z M80,185 h50 v50 h-50 Z M180,135 h50 v50 h-50 Z M130,185 h50 v50 h-50 Z M180,185 h50 v50 h-50 Z" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
+  <path d="M130,135 h25 v25 h-25 Z M155,135 h25 v25 h-25 Z M130,160 h25 v25 h-25 Z M155,160 h25 v25 h-25 Z" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
+  <rect x="30" y="35" width="200" height="200" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
+  <text x="80" y="90" font-size="16" text-anchor="middle" style="fill:var(--ink);stroke:none">100</text>
+  <text x="155" y="64" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">50</text>
+  <text x="142" y="150" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">25</text>
+  <text x="205" y="160" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">50</text>
+  <line x1="260" y1="24" x2="260" y2="248" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
+  <text x="278" y="46" font-size="15" style="fill:var(--accent);stroke:none">Duijvestijn, 1978</text>
+  <text x="278" y="76" font-size="13" style="fill:var(--ink);stroke:none">Lowest-order simple perfect squared square</text>
+  <text x="278" y="102" font-size="14" style="fill:var(--ink);stroke:none">Order n = 21</text>
+  <text x="278" y="128" font-size="14" style="fill:var(--ink);stroke:none">Frame 112 × 112</text>
+  <text x="278" y="154" font-size="13" style="fill:var(--ink-soft);stroke:none">21 integer-sided squares, all distinct</text>
+  <text x="278" y="180" font-size="13" style="fill:var(--ink-soft);stroke:none">Σ sᵢ² = 112² = 12544</text>
+  <text x="278" y="206" font-size="13" style="fill:var(--ink-soft);stroke:none">gcd(sᵢ) = 1 (primitive)</text>
+  <text x="278" y="234" font-size="12" style="fill:var(--muted);stroke:none">No lower order exists; schematic only</text>
+</svg>
+<figcaption>Figure 11. A structural schematic of the 21st-order perfect squared square: nested squares of very different sizes fill one square, conveying the idea that at a fixed order all side lengths are distinct. This is a simplified schematic, not Duijvestijn's exact 112×112 layout of 1978.</figcaption>
+</figure>
+
+<h3>Supplement B: Full coverage and ladder subdivision in the classic modes</h3>
+<p>Besides the multi-focus size field, the project offers two classical modes: the <strong>Euclidean continued-fraction dissection</strong> and the <strong>Smith network (Moron sub-network)</strong>. Because the world ratio is the exact integer ratio m:n, both start from an exact Euclidean dissection of W×H; the skeleton therefore already covers the whole frame, with no inscribed 33×32 patch surrounded by empty space. The network mode then follows the Smith-diagram idea that a single 1-ohm resistor may be replaced by a sub-network: each skeleton square becomes a 33×33 cell lattice whose upper 33×32 cells are covered by the nine distinct Moron squares and whose last row is closed by 33 unit squares — 42 squares, still an exact cover of the parent.</p>
+<p>Further density comes from the <strong>L-shaped ladder subdivision</strong>. With t = s/k (the implementation uses k = 3), a parent square is partitioned into one (k−1)t square, k tiles of side t on the right and k−1 tiles along the bottom, i.e. 2k squares. Every substitution is a partition, so coverage stays exactly 1 at any depth:</p>
+<div class="eq"><span class="eqn">(B.1)</span> ((<var>k</var>−1)<var>t</var>)<sup>2</sup> + (2<var>k</var>−1)<var>t</var><sup>2</sup> = (<var>k</var><sup>2</sup>−2<var>k</var>+1+2<var>k</var>−1)<var>t</var><sup>2</sup> = <var>k</var><sup>2</sup><var>t</var><sup>2</sup> = <var>s</var><sup>2</sup>, &nbsp; <var>n</var><sub>out</sub> = 2<var>k</var>.</div>
+<p>Splitting depends only on the on-screen size <code>s·scale</code> and the <code>order</code> parameter: zooming unfolds new levels, off-screen tiles are pruned, so the square count can grow from hundreds to tens of thousands while coverage remains exact. Plate B shows the skeleton, the 42-square sub-network and the k = 3 ladder step.</p>
+<figure>
+<svg viewBox="0 0 680 230" style="width:100%;height:auto" role="img" aria-label="Euclidean skeleton, Moron sub-network and ladder subdivision">
+  <rect x="0" y="0" width="680" height="230" style="fill:var(--bg-soft);stroke:none"/>
+  <text x="14" y="20" font-size="12" style="fill:var(--accent);stroke:none">(a) Skeleton cf = [1; 2]</text>
+  <rect x="14" y="34" width="120" height="120" style="fill:var(--c1);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="134" y="34" width="60" height="60" style="fill:var(--c2);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="134" y="94" width="60" height="60" style="fill:var(--c3);stroke:var(--line);stroke-width:1.2"/>
+  <text x="14" y="172" font-size="11" style="fill:var(--ink-soft);stroke:none">3 squares tile the 3:2 frame</text>
+  <text x="228" y="20" font-size="12" style="fill:var(--accent);stroke:none">(b) 42-square Moron sub-network</text>
+  <rect x="228" y="34" width="150" height="150" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="228" y="34" width="82" height="82" style="fill:var(--c1);stroke:var(--line);stroke-width:1"/>
+  <rect x="310" y="34" width="68" height="68" style="fill:var(--c2);stroke:var(--line);stroke-width:1"/>
+  <rect x="310" y="102" width="32" height="32" style="fill:var(--c3);stroke:var(--line);stroke-width:1"/>
+  <rect x="342" y="102" width="36" height="36" style="fill:var(--c4);stroke:var(--line);stroke-width:1"/>
+  <rect x="228" y="116" width="64" height="64" style="fill:var(--c5);stroke:var(--line);stroke-width:1"/>
+  <rect x="292" y="134" width="18" height="18" style="fill:var(--c6);stroke:var(--line);stroke-width:1"/>
+  <rect x="292" y="152" width="18" height="28" style="fill:var(--c1);stroke:var(--line);stroke-width:1"/>
+  <rect x="310" y="138" width="68" height="42" style="fill:var(--c2);stroke:var(--line);stroke-width:1"/>
+  <g style="fill:var(--fill-2);stroke:var(--line);stroke-width:.7">
+    <rect x="228" y="180" width="12" height="4"/><rect x="242" y="180" width="12" height="4"/><rect x="256" y="180" width="12" height="4"/><rect x="270" y="180" width="12" height="4"/><rect x="284" y="180" width="12" height="4"/><rect x="298" y="180" width="12" height="4"/><rect x="312" y="180" width="12" height="4"/><rect x="326" y="180" width="12" height="4"/><rect x="340" y="180" width="12" height="4"/><rect x="354" y="180" width="12" height="4"/><rect x="366" y="180" width="12" height="4"/>
+  </g>
+  <text x="228" y="202" font-size="11" style="fill:var(--ink-soft);stroke:none">9 distinct tiles + 33 unit cells</text>
+  <text x="430" y="20" font-size="12" style="fill:var(--accent);stroke:none">(c) Ladder k = 3 → 2k = 6 tiles</text>
+  <rect x="430" y="34" width="120" height="120" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
+  <rect x="430" y="34" width="80" height="80" style="fill:var(--c4);stroke:var(--line);stroke-width:1.2"/>
+  <rect x="510" y="34" width="40" height="40" style="fill:var(--c1);stroke:var(--line);stroke-width:1"/>
+  <rect x="510" y="74" width="40" height="40" style="fill:var(--c2);stroke:var(--line);stroke-width:1"/>
+  <rect x="510" y="114" width="40" height="40" style="fill:var(--c3);stroke:var(--line);stroke-width:1"/>
+  <rect x="430" y="114" width="40" height="40" style="fill:var(--c5);stroke:var(--line);stroke-width:1"/>
+  <rect x="470" y="114" width="40" height="40" style="fill:var(--c6);stroke:var(--line);stroke-width:1"/>
+  <text x="470" y="78" font-size="12" style="fill:var(--ink);stroke:none">2t</text>
+  <text x="516" y="56" font-size="11" style="fill:var(--ink);stroke:none">t</text>
+  <text x="430" y="172" font-size="11" style="fill:var(--ink-soft);stroke:none">(2t)² + 5t² = 9t² = s²</text>
+  <text x="14" y="220" font-size="11" style="fill:var(--muted);stroke:none">Every substitution partitions its parent, so coverage stays exactly 100% at any order.</text>
+</svg>
+<figcaption>Plate B (supplement). Three steps of the classic construction: (a) a continued-fraction skeleton covering the frame; (b) each skeleton square embedding the 42-square Moron sub-network; (c) one L-shaped ladder step turning a square into 2k squares. All pieces remain axis-aligned squares with exact coverage.</figcaption>
+</figure>
+</section>
+
+<p class="foot">Squared-Rectangle Laboratory · Technical Essay　|　Bilingual ZH / EN · zero external dependencies · inline SVG figures　|　Version 1.0</p>
+
+</article>
+</body>
+</html>
