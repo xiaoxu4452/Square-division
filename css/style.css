@@ -377,6 +377,14 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius
   .modal-panel { height: 96vh; height: 96dvh; }
 }
 
+/* Install button: revealed only when the browser fires beforeinstallprompt.
+   Kept off narrow screens so the compact top bar never overflows. */
+#btnInstall[hidden] { display: none; }
+#btnInstall { border-color: var(--accent); }
+@media (max-width: 900px) {
+  #btnInstall { display: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

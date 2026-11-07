@@ -113,8 +113,12 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   const far = S.sizeField(0, 0, w, opts);
   ok('size field: centre much finer than the far field', near < far / 1000,
     'near=' + near.toExponential(2) + ' far=' + far.toFixed(1));
-  ok('size field: far field equals the macro block side L', Math.abs(far - w.L) < 1e-6,
-    'L=' + w.L + ' far=' + far.toFixed(6));
+  // The far-field target is the largest skeleton square, so the Euclidean
+  // minimum-tile skeleton is never subdivided away from the centres.
+  const skeletonMax = Math.max(...S.minimumSkeleton(w, 0, 0).map(b => b.s));
+  ok('size field: far field keeps the minimum-tile skeleton intact',
+    Math.abs(far - Math.min(w.gw, w.gh)) < 1e-6 && far >= skeletonMax,
+    'far=' + far.toFixed(1) + ' skeletonMax=' + skeletonMax);
 }
 
 /* --------- Deep zoom: adaptive LOD keeps a uniform subdivision --------- */
@@ -165,18 +169,28 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   // Both classic modes must cover the WHOLE rectangle for any aspect ratio,
   // not just an inscribed 33:32 patch in the middle of the canvas.
   const ratios = [1, 1.5, 16 / 9, 0.62, 2.3, 3.7, 33 / 32];
-  let allOk = true, worst = 1;
+  let allOk = true, worst = 1, skeletonOk = true;
   for (const r of ratios) {
-    const w = S.buildWorld(r, { depth: 8, rows: 12 });
+    const wr = S.buildWorld(r, { depth: 8, rows: 12 });
+    const sk = S.minimumSkeleton(wr, 0, 0);
+    const cf = [];
+    // Continued-fraction quotients of m:n sum to the skeleton square count.
+    let a = wr.gw, b = wr.gh;
+    while (b > 0) { const q = Math.floor(a / b); cf.push(q); a = a - q * b; [a, b] = [b, a]; }
+    if (sk.length !== cf.reduce((x, y) => x + y, 0)) skeletonOk = false;
+    if (Math.abs(sk.reduce((x, y) => x + y.s * y.s, 0) - wr.gw * wr.gh) > 1e-6) skeletonOk = false;
     for (const mode of ['euclid', 'network']) {
-      const st = S.staticTiling(mode, w, { minPx: 200 });
-      const v = S.validate(st.blocks, w);
-      if (!v.ok || st.blocks.length < 9) allOk = false;
+      const st = S.staticTiling(mode, wr, { minPx: 200 });
+      const v = S.validate(st.blocks, wr);
+      // A square world legitimately consists of exactly one skeleton square.
+      if (!v.ok || st.blocks.length < 1) allOk = false;
       worst = Math.min(worst, v.area / v.expected);
     }
   }
   ok('euclid + network cover every ratio exactly', allOk,
     'ratios=' + ratios.length + ' worstArea=' + worst.toFixed(6));
+  ok('minimum-tile skeleton equals the continued-fraction quotient sum', skeletonOk,
+    '(sum q_i squares, exact area)');
 
   const w = S.buildWorld(1.5, { depth: 8, rows: 12 });
   const nw = S.staticTiling('network', w, { minPx: 200 });
@@ -192,14 +206,100 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   const hw = W / (2 * scale), hh = H / (2 * scale);
   const ox = w.gw / 2, oy = w.gh / 2;
   const view = { x0: ox - hw, y0: oy - hh, x1: ox + hw, y1: oy + hh, scale, ox, oy, hw, hh };
-  const low = S.staticTiling('euclid', w, { view, order: 0 }).blocks.length;
-  const high = S.staticTiling('euclid', w, { view, order: 4 }).blocks.length;
+  const foci = S.defaultFoci(w, 3, 11);
+  const radius = Math.min(w.gw, w.gh) * 0.62;
+  const common = { view, foci, radius };
+  const low = S.staticTiling('euclid', w, Object.assign({}, common, { order: 0 })).blocks.length;
+  const high = S.staticTiling('euclid', w, Object.assign({}, common, { order: 4 })).blocks.length;
   ok('subdivision order increases the square count', high > low * 4,
     'order0=' + low + ' order4=' + high);
-  const dense = S.staticTiling('network', w, { view, order: 6 });
+  const dense = S.staticTiling('network', w, Object.assign({}, common, { order: 6 }));
   const dv = S.validate(dense.blocks, w);
   ok('dense classic tiling still covers exactly', dv.ok,
     'n=' + dense.blocks.length + ' gaps=' + dv.gaps);
+
+  /* ---- All three tilings share custom dense centres, fine on frame one ---- */
+  const single = [{ x: w.gw * 0.32, y: w.gh * 0.4 }];
+  const moved = [{ x: w.gw * 0.75, y: w.gh * 0.68 }];
+  for (const mode of ['quad', 'euclid', 'network']) {
+    const make = fset => {
+      if (mode === 'quad') {
+        return S.generate(w, view, {
+          foci: fset, radius, power: 2.6, minPx: 1.7, maxDepth: 48,
+          maxBlocks: 100000, boost: 0.72
+        });
+      }
+      return S.staticTiling(mode, w, {
+        view, foci: fset, radius, order: 2, maxBlocks: 100000
+      }).blocks;
+    };
+    const a = make(single), b = make(moved);
+    const v = S.validate(a, w);
+    let minPx = Infinity, maxPx = 0;
+    for (const t of a) { const q = t.s * scale; if (q < minPx) minPx = q; if (q > maxPx) maxPx = q; }
+    ok(mode + ': custom centre renders sub-2px tiles on the first frame',
+      minPx < 2 && maxPx > 100 && v.ok,
+      'n=' + a.length + ' minPx=' + minPx.toFixed(2) + ' maxPx=' + maxPx.toFixed(0));
+    // Centre of mass of the fine tiles must follow the moved focus.
+    const centroid = blocks => {
+      let sx = 0, sy = 0, sw = 0;
+      for (const t of blocks) {
+        if (t.s * scale > 6) continue;
+        const weight = 1 / (t.s * t.s);
+        sx += ((t.wx != null ? t.wx : t.x) + t.s / 2) * weight;
+        sy += ((t.wy != null ? t.wy : t.y) + t.s / 2) * weight;
+        sw += weight;
+      }
+      return sw ? { x: sx / sw, y: sy / sw } : null;
+    };
+    const ca = centroid(a), cb = centroid(b);
+    ok(mode + ': dense core follows the moved centre',
+      !!ca && !!cb && cb.x - ca.x > w.gw * 0.1 && cb.y - ca.y > w.gh * 0.05,
+      ca && cb ? 'dx=' + (cb.x - ca.x).toFixed(0) + ' dy=' + (cb.y - ca.y).toFixed(0) : 'no fine tiles');
+  }
+}
+
+/* --------------------- C++ / WebAssembly kernel --------------------- */
+{
+  const fs = require('fs');
+  const path = require('path');
+  // The loader and engine attach themselves to globalThis, as in a browser.
+  globalThis.Squaring = S;
+  require('../js/wasm-module.js');
+  require('../js/wasm-engine.js');
+  const E = globalThis.WasmEngine;
+  ok('C++/WASM kernel instantiates without a runtime',
+    !!E && E.available() && E.version() === 2,
+    'sha=' + (E ? E.sha() : 'n/a'));
+
+  const bin = fs.readFileSync(path.join(__dirname, '..', 'wasm', 'tiling_core.wasm'));
+  let imports = [], exports = [];
+  try {
+    const mod = new WebAssembly.Module(bin);
+    imports = WebAssembly.Module.imports(mod);
+    exports = WebAssembly.Module.exports(mod).map(e => e.name);
+  } catch (e) { /* reported by the next assertion */ }
+  ok('WASM kernel is freestanding (memory-only import)',
+    imports.length === 1 && imports[0].name === 'memory' &&
+    exports.indexOf('tile_region') >= 0,
+    'imports=' + imports.length + ' exports=' + exports.join(','));
+
+  const w = S.buildWorld(1.5, { depth: 8, rows: 12 });
+  const W = 1600, H = 900, scale = Math.min(W * 0.94 / w.gw, H * 0.94 / w.gh);
+  const hw = W / (2 * scale), hh = H / (2 * scale);
+  const ox = w.gw / 2, oy = w.gh / 2;
+  const view = { x0: ox - hw, y0: oy - hh, x1: ox + hw, y1: oy + hh, scale, ox, oy, hw, hh };
+  const opts = {
+    foci: S.defaultFoci(w, 3, 2026), power: 2.6, maxDepth: 48,
+    radius: Math.min(w.gw, w.gh) * 0.62, minPx: 1.7,
+    boost: 0.62, maxBlocks: 100000
+  };
+  const js = S.generate(w, view, opts);
+  const wasm = E.generateSync(w, view, opts);
+  const key = arr => arr.map(t => [t.x, t.y, t.s, t.depth].join(',')).sort().join('|');
+  ok('WASM kernel is tile-identical to the JS generator',
+    !!wasm && wasm.length === js.length && key(wasm) === key(js) && S.validate(wasm, w).ok,
+    'js=' + js.length + ' wasm=' + (wasm ? wasm.length : 'null'));
 }
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : fail + ' FAILED'));

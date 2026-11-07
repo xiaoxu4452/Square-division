@@ -18,6 +18,9 @@
 - **经典算法对照。** 欧几里得连分数与 Smith / Moroń 电网络剖分都**精确铺满整个矩形**；L 形阶梯替换让方块数可经「细分阶数」滑块从数百增长到数万。
 - **小型论文式讲解。** 知识弹窗内嵌双语技术论文（`essay.zh.html` / `essay.en.html`）：11 个编号章节、27 个编号公式、12 张内联 SVG 图解，含摘要、参考文献与参数附录。
 - **手机长屏适配。** 覆盖 19.5:9 / 20:9 竖屏、`dvh` 动态视口、安全区、`40px` 触控目标、双指缩放；竖屏默认使用纵向世界，让画布铺满长屏。
+- **三种模式共用自定义密集中心。** 双击添加、拖动标记移动、右键移除最近；首屏即呈现亚像素精细密核，切换算法与重画矩形时中心位置保留。
+- **最少方块远场。** 精确的欧几里得 / 连分数骨架在外围只保留 `Σ qᵢ` 个大块（理论边界见 §3.8）。
+- **C++ WASM 多核 + 可安装 PWA。** 约 9 KB 的 freestanding C++17 内核在 Web Worker 池中并行执行，结果与 JS 引擎逐块一致；Service Worker 提供离线缓存与桌面安装。
 
 ---
 
@@ -33,6 +36,13 @@ python -m http.server 8000
 ```
 
 直接用浏览器打开 `index.html`（`file://`）同样可以运行。
+
+仓库已提交编译产物，无需编译器。如需重建内核（仅需 Zig）或重新生成图标：
+
+```bash
+node tools/build-wasm.js      # native/tiling_core.cpp -> wasm/ + js/wasm-module.js
+node tools/make-icons.js      # icons/*.png
+```
 
 运行算法验证（需要 Node.js 18+）：
 
@@ -116,22 +126,43 @@ screenY = (worldY - cyHi) · scale + H/2 - offY
 
 ---
 
+### 3.8 成熟算法、最少方块问题与多核 WASM
+
+论文第 10 章（`essay.zh.html`）梳理了成熟算法谱系：Brooks–Smith–Stone–Tutte 把剖分化为 3-连通平面图（c-net）枚举，Tutte 轮定理与 [plantri](https://users.cecs.anu.edu.au/~bdm/plantri/) 无重复生成，Kirchhoff 方程配合[矩阵树定理](https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem)给出整数电流（即边长），结果以 Bouwkampcode / tablecode 归档于 [Squaring.Net](https://www.squaring.net/sq/ss/tws.html)；Cannon–Floyd–Parry 的有限细分规则（`subdivide.c` / `squarect.c`）正是本项目阶梯替换与 Moroń 子网络嵌入的学术对应物。
+
+**远场**现在从欧几里得连分数骨架出发，即「每次切下最大正方形」的贪心剖分，块数恰为 `Σ qᵢ`。我们称其为「最少方块骨架」而非已证明的全局最优：[Kenyon（1996）](https://arxiv.org/abs/math/9411215)给出 `log₂ p` 下界，并指出贪心在 `p×(p+1)` 矩形上需要 `p+1` 块而最优只需 `O(log p)`；精确解依赖 MTRS 的整数规划（[Monaci & dos Santos, 2014](http://www.din.uem.br/sbpo/sbpo2014/pdf/arq0373.pdf)）。本项目的取舍是：整数比下二进制精确、构造简单、与后续细分复合后仍 100% 覆盖。**自定义密集中心在三种模式下通用**（双击添加、拖动标记移动、右键移除最近），且首屏即呈现亚像素级的精细密核。
+
+剖分热点由 C++17 内核（`native/tiling_core.cpp`）承担，用 Zig 附带的 clang 编译为 `wasm32-freestanding`（无需 Emscripten / libc，约 9 KB，仅导入一块线性内存）；重建命令 `node tools/build-wasm.js`。最多 8 个 Web Worker 各持一个 WASM 实例并行计算互不重叠的根区域，结果以 transferable buffer 回传，**不依赖 SharedArrayBuffer / COOP / COEP**（GitHub Pages 无法设置响应头）。首帧由主线程 WASM 同步出图；WASM 或 Worker 不可用时自动降级到 `js/squaring.js`，且逐块结果完全一致。真正的 wasm pthread 共享内存可通过可选参数 `?coi=1` 启用：`sw.js` 注入 COOP/COEP（[技术思路](https://github.com/gzuidhof/coi-serviceworker)），代价是首次访问刷新一次。同一 Service Worker 还提供离线缓存与[桌面安装](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)。
+
+---
+
 ## 4. 目录结构
 
 ```
 Square-division/
 ├── index.html            # 玻璃顶栏、控制台、HUD、缩放条、论文弹窗
-├── essay.zh.html         # 中文技术论文（自包含、内联 SVG）
-├── essay.en.html         # 英文技术论文（自包含、内联 SVG）
-├── css/
-│   └── style.css         # 主题、玻璃拟态、微渐变、响应式布局
+├── essay.zh.html         # 中文技术论文（自包含、内联 SVG、参考链接）
+├── essay.en.html         # 英文技术论文（自包含、内联 SVG、参考链接）
+├── manifest.webmanifest  # 可安装 PWA 清单（standalone、192/512 图标）
+├── sw.js                 # 离线缓存 + 可选 COOP/COEP 头注入
+├── css/style.css         # 主题、玻璃拟态、微渐变、响应式布局
 ├── js/
 │   ├── i18n.js           # 中英词典与 DOM 文本绑定
 │   ├── bigdec.js         # BigInt 定点高精度十进制（80 位小数）
 │   ├── squaring.js       # 剖分引擎、邻接图、着色、正确性校验
+│   ├── wasm-module.js    # 生成物：base64 内联 C++/WASM 二进制（Worker 离线可用）
+│   ├── wasm-engine.js    # 任务分片、Worker 池、同步首帧与降级路径
+│   ├── tiling-worker.js  # 每个 Worker 线程一个 C++/WASM 实例
 │   └── app.js            # 相机、渲染、手势、状态、导出、界面绑定
-├── tests/
-│   └── verify.js         # Node 验证脚本（零依赖）
+├── native/
+│   └── tiling_core.cpp   # C++17 freestanding 四叉树内核（无 libc）
+├── wasm/
+│   └── tiling_core.wasm  # 编译产物（约 9 KB，仅导入一块线性内存）
+├── tools/
+│   ├── build-wasm.js     # 重建内核与 js/wasm-module.js（需要 Zig）
+│   └── make-icons.js     # 生成 PWA PNG 图标（纯 Node，无图像库）
+├── icons/                # icon-192.png、icon-512.png、icon-maskable-512.png
+├── tests/verify.js       # Node 验证脚本（34 项断言，零依赖）
 ├── README.md             # 英文说明
 └── README.zh-CN.md       # 本文件
 ```
@@ -161,11 +192,12 @@ Square-division/
 | --- | --- |
 | 剖分算法 | 四叉树尺寸场 / 欧几里得 / Moroń 电网络 |
 | 密集中心数量 | 焦点数，1–6 |
+| 密集中心半径 | 影响半径占 `min(W,H)` 的比例（0.20–1.20） |
 | 聚焦强度 | 尺寸场指数 `power` |
 | 宏块精度 | `L = 2^D` 中的 `D` |
-| 配色方案 | 多彩光谱 / 天蓝 / 暖色 |
+| 配色方案 | 素雅光谱 / 青灰 / 赭石 / 蓝色阶 |
 | 随机种子 | 决定配色与焦点分布，可复现 |
-| 细分阶数 | `euclid` / `network` 的阶梯细分级别，0–6 |
+| 细分阶数 | 密核范围 / 细分层级预算，三种模式通用，0–6 |
 | 比例预设 | `1:1`、`3:2`、`16:9`、黄金比、`2:3` 等 |
 | 显示选项 | 网格、动画、边长标注、焦点标记 |
 
@@ -187,7 +219,10 @@ Square-division/
 | `palette` | `palette=warm` | 配色方案 |
 | `order` | `order=4` | 经典模式的阶梯细分阶数 |
 | `console` | `console=0` | 初始折叠控制台 |
-| `modal` | `modal=1` | 打开即显示知识讲解 |
+| `modal` | `modal=1` | 打开时显示知识讲解 |
+| `radius` | `radius=0.8` | 密集中心影响半径 |
+| `coi` | `coi=1` | 可选 COOP/COEP 注入，用于共享内存 WASM |
+| `pwa` | `pwa=1` | 安装后应用的启动 URL |
 
 示例：
 
@@ -199,17 +234,17 @@ https://xiaoxu4452.github.io/Square-division/?demo=1&mode=quad&centers=3&theme=d
 
 ## 6. 验证
 
-`node tests/verify.js` 共断言 24 项不变量，包括：
+`node tests/verify.js` 共断言 34 项不变量，包括：
 
 - 面积严格守恒、零空隙、零重叠；
-- `10^9` 倍放大下约 52 000 条邻接边中同色边为 0；
-- 无黑 / 白 / 灰填充，全视图 30 个不同色相、深放大 16 个色相桶；
-- `10^9` 倍放大下无大块纯色（所有方块约 7.45 px）；
+- `10^9` 倍放大下约 93 000 条邻接边中同色边为 0；
+- 无黑 / 白 / 灰填充，全视图 25 个不同色相、深放大 16 个色相桶；
+- `10^9` 倍放大下无大块纯色（所有方块约 5.59 px）；
 - 4096 个连续整数网格坐标产生 4096 个互异哈希值；
-- 远端 `target(far) = L` 严格成立（外围不产生小方块）；
+- 远端 `target(far) = min(W,H)` 严格成立，最少方块骨架在外围不被细分；
 - `BigDec` 中 `0.1 + 0.2 = 0.3`，40 次连续锚点缩放保持有限；
 - `euclid` 与 `network` 在 7 种长宽比下均精确铺满整个外框；
-- Moroń 九块边长平方和为 `1056 = 33×32`，方块数随细分阶数单调增长，44,851 块的密集经典剖分仍零空隙。
+- Moroń 九块边长平方和为 `1056 = 33×32`，方块数随细分阶数单调增长，77,751 块的密集经典剖分仍零空隙；三种模式的自定义中心移动后细块质心都随之移动。
 
 此外使用 Chrome DevTools Protocol 真实设备模拟，在 `390 × 844`、`360 × 800`、`844 × 390`、`1600 × 900` 下复核布局，溢出元素为 0。
 
@@ -225,6 +260,11 @@ https://xiaoxu4452.github.io/Square-division/?demo=1&mode=quad&centers=3&theme=d
 4. 保存后访问 `https://xiaoxu4452.github.io/Square-division/`。
 
 无需 Jekyll 构建、无需打包工具，也不需要 `.nojekyll` 标记。
+### 安装为桌面应用
+
+在 HTTPS（或 localhost）下本站是可安装 PWA：满足安装条件后顶栏出现「安装应用」按钮，Chrome / Edge 也可从浏览器菜单选择「安装此站点」。Service Worker 会缓存全部静态资源以支持离线使用。附加参数 `?coi=1` 可启用跨源隔离，用于共享内存 WASM 的实验路径。
+
+
 
 ---
 
@@ -235,4 +275,9 @@ https://xiaoxu4452.github.io/Square-division/?demo=1&mode=quad&centers=3&theme=d
 - Sprague, R. — *Beispiel einer Zerlegung des Quadrats in lauter verschiedene Quadrate*, 1939.
 - Duijvestijn, A. J. W. — *Simple perfect squared square of lowest order*, 1978（21 阶）。
 - Conway, J. H. — *Mrs. Perkins's Quilt*。
-- 维基百科 — [Squaring the square](https://en.wikipedia.org/wiki/Squaring_the_square)、[Continued fraction](https://en.wikipedia.org/wiki/Continued_fraction)、[Smith diagram](https://en.wikipedia.org/wiki/Smith_diagram)。
+- 维基百科 — [Squaring the square](https://en.wikipedia.org/wiki/Squaring_the_square)、[Continued fraction](https://en.wikipedia.org/wiki/Continued_fraction)、[Smith diagram](https://en.wikipedia.org/wiki/Smith_diagram)、[Dehn invariant](https://en.wikipedia.org/wiki/Dehn_invariant)。
+- R. Kenyon — [Tiling a rectangle with the fewest squares](https://arxiv.org/abs/math/9411215), 1996（log₂p 下界；贪心非最优）。
+- M. Monaci, A. G. dos Santos — [Minimum Tiling of a Rectangle by Squares](http://www.din.uem.br/sbpo/sbpo2014/pdf/arq0373.pdf), SBPO 2014。
+- [Squaring.Net: Tiling by Squares](https://www.squaring.net/sq/ss/tws.html) · [21 阶 SPSS](https://www.squaring.net/sq/ss/spss/o21/spsso21.html) · [CPSS 目录](https://www.squaring.net/sq/ss/cpss/cpss.html) · [plantri](https://users.cecs.anu.edu.au/~bdm/plantri/)。
+- S. E. Anderson — [Compound Perfect Squared Squares of the Order Twenties](https://arxiv.org/abs/1303.0599), 2013。
+- [Emscripten pthreads](https://emscripten.org/docs/porting/pthreads.html) · [web.dev: COOP/COEP](https://web.dev/articles/coop-coep) · [coi-serviceworker](https://github.com/gzuidhof/coi-serviceworker) · [MDN: Making PWAs installable](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)。

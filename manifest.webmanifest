@@ -1,0 +1,30 @@
+{
+  "name": "方形剖分无限画布 · Squaring the Rectangle",
+  "short_name": "方形剖分",
+  "description": "An infinite-canvas laboratory for dissecting rectangles into squares: continued fractions, Smith electrical networks, multi-focus quadtree fields and 80-digit precision.",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./?pwa=1",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#0d1522",
+  "theme_color": "#0d1522",
+  "categories": ["education", "graphics", "utilities", "productivity"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "知识讲解 / Mathematical notes",
+      "short_name": "Notes",
+      "description": "Open the bilingual technical essay",
+      "url": "./?demo=1&modal=1",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
+}

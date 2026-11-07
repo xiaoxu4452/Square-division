@@ -107,24 +107,54 @@
     return out;
   }
 
-  /**
-   * Scale-free target edge length, evaluated in viewport-local coordinates.
-   * target = L * (d/R)^power, so d -> 0 yields arbitrarily small tiles and
-   * there is NO absolute world-space floor: zooming in always reveals a new
-   * level of subdivision (LOD stops it on screen-pixel size instead).
-   * At d >= R the target equals L exactly, therefore a macro tile with s = L
-   * never satisfies s > 1.35 * target; far-field tiles are strictly large.
-   */
-  function sizeField(x, y, world, opts) {
-    var foci = opts.foci || [], best = Infinity;
+  /** Distance from (x,y) to the nearest user-defined dense centre. */
+  function focusDistance(x, y, foci) {
+    var best = Infinity;
     for (var i = 0; i < foci.length; i++) {
       var dx = x - foci[i].x, dy = y - foci[i].y;
       var d = Math.sqrt(dx * dx + dy * dy);
       if (d < best) best = d;
     }
+    return best;
+  }
+
+  /** Normalised dense-centre weight: 1 at a centre, 0 in the far field. */
+  function focusWeight(x, y, world, opts) {
     var R = opts.radius || Math.min(world.gw, world.gh) * 0.62;
-    var t = clamp(best / R, 0, 1);
-    return world.L * Math.pow(t, opts.power || 2.4);
+    var d = focusDistance(x, y, opts.foci || []);
+    if (!isFinite(d)) return 0;
+    return Math.pow(clamp(1 - d / R, 0, 1), opts.power || 2.4);
+  }
+
+  /**
+   * Scale-free target edge length, evaluated in viewport-local coordinates.
+   *
+   * target = F * (d/R)^power with F = min(gw,gh), the side of the largest
+   * square the Euclidean minimum-tile skeleton can contain. At d >= R the
+   * target equals F, so no skeleton square satisfies s > 1.35 * target: the
+   * far field keeps its minimum number of large squares. As d -> 0 there is
+   * no absolute world-space floor, so zooming in keeps revealing new levels
+   * of subdivision (LOD stops it at a screen-pixel size instead).
+   */
+  function sizeField(x, y, world, opts) {
+    var R = opts.radius || Math.min(world.gw, world.gh) * 0.62;
+    var d = focusDistance(x, y, opts.foci || []);
+    var t = clamp(d / R, 0, 1);
+    var far = opts.farTarget || Math.min(world.gw, world.gh);
+    return far * Math.pow(t, opts.power || 2.4);
+  }
+
+  /**
+   * Minimum-tile skeleton of the whole rectangle: the Euclidean algorithm
+   * cuts the largest possible square at every step, producing sum(q_i)
+   * squares (q_i = continued-fraction quotients of m:n). Every following
+   * refinement is a partition of one of these squares, so coverage stays
+   * exact while the far field retains the fewest possible large squares.
+   */
+  function minimumSkeleton(world, ox, oy) {
+    var out = [];
+    euclidChain(-ox, -oy, world.gw, world.gh, out, null);
+    return out;
   }
 
   /* ------------------------------------------------------- LOD subdivision generation */
@@ -134,7 +164,7 @@
    * @param opts  {foci,power,minSize,radius,minPx,maxBlocks,maxDepth}
    * @returns blocks [{x,y,s,depth}]
    */
-  function generateOnce(world, view, opts, minPx, cap) {
+  function generateOnce(world, view, opts, minPx, cap, boost) {
     var blocks = [];
     var maxDepth = opts.maxDepth || 48;
     var scale = view.scale;
@@ -150,15 +180,24 @@
     var foci = (opts.foci || []).map(function (f) {
       return { x: f.x - ox, y: f.y - oy };
     });
-    var localOpts = { foci: foci, radius: opts.radius, power: opts.power };
+    var localOpts = {
+      foci: foci, radius: opts.radius, power: opts.power,
+      farTarget: Math.min(world.gw, world.gh)
+    };
 
     function walk(x, y, s, depth) {
       if (exceeded) return;                    // abort instead of emitting a split-level mosaic
       if (x > hw || y > hh || x + s < -hw || y + s < -hh) return;
       if (blocks.length >= cap) { exceeded = true; return; }
-      var target = sizeField(x + s / 2, y + s / 2, world, localOpts);
+      var cx = x + s / 2, cy = y + s / 2;
+      var target = sizeField(cx, cy, world, localOpts);
+      // A dense centre is rendered finely from the very first frame: its
+      // screen-pixel floor is relaxed by the focus weight, so the initial
+      // view already shows the characteristic tiny-square core.
+      var w = focusWeight(cx, cy, world, localOpts);
+      var floor = minPx * (1 - boost * w);
       // Termination is governed by screen pixels + depth only (no world floor).
-      if (depth < maxDepth && s > target * 1.35 && s * scale > minPx * 2.1) {
+      if (depth < maxDepth && s > target * 1.35 && s * scale > floor * 2.1) {
         var h = s / 2;
         walk(x, y, h, depth + 1);
         walk(x + h, y, h, depth + 1);
@@ -169,10 +208,9 @@
       }
     }
 
-    for (var j = 0; j < world.n; j++) {
-      for (var i = 0; i < world.m; i++) {
-        walk(i * world.L - ox, j * world.L - oy, world.L, 0);
-      }
+    var roots = minimumSkeleton(world, ox, oy);
+    for (var i = 0; i < roots.length && !exceeded; i++) {
+      walk(roots[i].x, roots[i].y, roots[i].s, 0);
     }
     blocks.exceeded = exceeded;
     blocks.ox = ox; blocks.oy = oy;
@@ -188,14 +226,18 @@
     opts = opts || {};
     var minPx = opts.minPx == null ? 2.4 : opts.minPx;
     var cap = opts.maxBlocks || 60000;
+    var boost = opts.boost == null ? 0.72 : opts.boost;
     var result = null;
-    for (var attempt = 0; attempt < 7; attempt++) {
-      result = generateOnce(world, view, opts, minPx, cap);
+    for (var attempt = 0; attempt < 9; attempt++) {
+      result = generateOnce(world, view, opts, minPx, cap, boost);
       if (!result.exceeded) return result;
-      minPx *= 1.8;
+      // Relax the dense core before coarsening the whole frame: the far
+      // field must keep its minimum-tile skeleton under any load.
+      if (boost > 0.1) boost *= 0.7;
+      else minPx *= 1.6;
     }
     // Fallback: a very coarse LOD with no tile cap; larger tiles are preferable to keep the whole view complete and at a consistent level
-    result = generateOnce(world, view, opts, minPx * 3, Infinity);
+    result = generateOnce(world, view, opts, minPx * 3, Infinity, 0);
     result.exceeded = false;
     return result;
   }
@@ -508,7 +550,7 @@
    * size, so zooming in keeps unfolding new ladder levels (unbounded depth)
    * while a frame only ever emits tiles that are actually visible.
    */
-  function staticOnce(mode, world, opts, minPx, cap) {
+  function staticOnce(mode, world, opts, minPx, cap, boost) {
     var meta = {};
     var skeleton = buildSkeleton(mode, world, meta);
     var view = opts.view || null;
@@ -518,12 +560,27 @@
     var vx1 = view ? view.x1 : Infinity, vy1 = view ? view.y1 : Infinity;
     var maxDepth = opts.maxDepth || 22, k = 3, out = [], exceeded = false;
 
+    // All three tilings share the same user-defined dense centres. A ladder
+    // level budget decreases linearly with the distance to the nearest
+    // centre; outside the core radius the Euclidean / Moron skeleton is left
+    // untouched, i.e. the far field keeps the fewest possible large squares.
+    var R = opts.radius || Math.min(world.gw, world.gh) * 0.62;
+    var order = clamp(opts.order == null ? 2 : opts.order, 0, 6);
+    var coreR = R * (0.18 + 0.12 * order);
+    var maxLevels = 4 + order * 2;
+    var foci = opts.foci || [];
+
     function emit(b, depth) {
       if (exceeded) return;
       if (b.x > vx1 || b.y > vy1 || b.x + b.s < vx0 || b.y + b.s < vy0) return;
       if (out.length >= cap) { exceeded = true; return; }
       var px = b.s * scale;
-      if (depth < maxDepth && px > minPx * 2.4) {
+      var d = focusDistance(b.x + b.s / 2, b.y + b.s / 2, foci);
+      var w = clamp(1 - d / coreR, 0, 1);
+      var budget = Math.round(maxLevels * Math.pow(w, 0.6));
+      // The centre is fine from the very first frame: relax its pixel floor.
+      var floor = minPx * (1 - boost * w);
+      if (depth < budget && depth < maxDepth && px > floor * 2.4) {
         var parts = ladderSplit(b, k, depth + 1);
         for (var i = 0; i < parts.length && !exceeded; i++) emit(parts[i], depth + 1);
       } else {
@@ -539,37 +596,39 @@
     out.ox = ox; out.oy = oy;
     meta.count = out.length;
     meta.mode = mode;
+    meta.coreRadius = coreR;
+    meta.maxLevels = maxLevels;
     return { blocks: out, meta: meta };
   }
 
   /**
-   * Classic dissection for the whole rectangle, with viewport-driven LOD.
-   * @param opts {view, order, minPx, maxBlocks}
-   *   order controls the target on-screen tile size: each step multiplies the
-   *   density, so the square count can grow to hundreds of thousands while
-   *   coverage stays exact. Without a view the full dissection is returned
-   *   in world coordinates (used by the verification suite).
+   * Classic dissection for the whole rectangle, with focus-driven LOD.
+   * @param opts {view, order, foci, radius, minPx, maxBlocks, boost}
+   *   order widens the dense core and raises its ladder-level budget, so the
+   *   square count grows from a few hundred to tens of thousands while the
+   *   far field keeps the minimum-tile skeleton. Without a view the coarse
+   *   full dissection is returned in world coordinates (Node test suite).
    */
   function staticTiling(mode, world, opts) {
     opts = opts || {};
     var order = clamp(opts.order == null ? 2 : opts.order, 0, 6);
-    var density = Math.pow(1.6, order - 2);
-    // Without a viewport there is no pixel scale, so use a coarse default to
-    // keep the headless verification suite fast.
-    var basePx = opts.minPx == null ? (opts.view ? 24 : 120) : opts.minPx;
-    // A tile below ~0.6 px carries no information; clamping also bounds the
-    // recursion so very high orders saturate at the cap instead of retrying.
-    var minPx = Math.max(1.0, basePx / density);
+    // The pixel floor at a centre is fixed and small: the first rendered
+    // frame already shows a genuinely fine core, independent of the order.
+    var minPx = opts.minPx == null ? (opts.view ? 1.6 : 120) : opts.minPx;
     var cap = opts.maxBlocks || 60000;
+    var boost = opts.boost == null ? 0.7 : opts.boost;
+    var lo = {
+      view: opts.view, radius: opts.radius, order: order,
+      maxDepth: opts.maxDepth, foci: opts.foci
+    };
     var result = null;
     for (var attempt = 0; attempt < 10; attempt++) {
       // The final pass drops the cap entirely: a coarse but COMPLETE frame is
       // always preferable to holes left by an aborted subdivision.
-      result = staticOnce(mode, world, opts, minPx, attempt === 9 ? Infinity : cap);
+      result = staticOnce(mode, world, lo, minPx, attempt === 9 ? Infinity : cap, boost);
       if (!result.blocks.exceeded) break;
-      // Gentle coarsening keeps the result close to the cap instead of
-      // dropping back to a much sparser frame.
-      minPx *= 1.3;
+      if (boost > 0.08) boost *= 0.72;
+      else minPx *= 1.3;
     }
     result.blocks.exceeded = false;
     result.meta.order = order;
@@ -618,6 +677,9 @@
     buildWorld: buildWorld,
     defaultFoci: defaultFoci,
     sizeField: sizeField,
+    focusDistance: focusDistance,
+    focusWeight: focusWeight,
+    minimumSkeleton: minimumSkeleton,
     generate: generate,
     buildAdjacency: buildAdjacency,
     palette: palette,

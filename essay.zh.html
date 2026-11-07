@@ -101,11 +101,11 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
   <h1>正方形剖分矩形：从欧几里得算法到近无限精确缩放</h1>
   <p class="subtitle">尺寸场、Smith 电网络类比、定点高精度与图着色的一份系统札记</p>
   <div class="meta">
-    <span>版本 1.0</span><span>纯静态实现 · 零外部依赖</span><span>中英双语</span><span>阅读约 25 分钟</span>
+    <span>版本 1.2 · 新增第 10 章：成熟算法与 WASM 多核工程</span><span>纯静态实现 · 零外部依赖</span><span>中英双语</span><span>阅读约 25 分钟</span>
   </div>
   <div class="abstract">
     <h3>摘要</h3>
-    <p>本文讨论把矩形精确剖分为有限个正方形的经典问题，并把它与本项目所采用的实时构造算法并置考察。我们首先回顾 Dehn 的可解性定理——长宽比为有理数当且仅当存在有限正方形剖分——并用欧几里得算法与连分数给出构造性一半；继而引入 Brooks–Smith–Stone–Tutte 的 Smith 图，把剖分翻译为单位电阻网络，得到 Kirchhoff 电流定律、Ohm 定律以及等效电阻 R<sub>eq</sub> = W/H。在回顾 Moroń、Sprague、Duijvestijn 等里程碑之后，文章详细推导本项目的多焦点尺寸场 target(d) = L·clamp(d/R, 0, 1)<sup>p</sup>、四叉树 LOD、基于 BigInt 的 80 位定点算术、以及基于扫描线邻接图的异色贪心着色，最后给出 24 项自动化断言与复杂度讨论。全文所有插图均为内联 SVG，不依赖任何外部资源。</p>
+    <p>本文讨论把矩形精确剖分为有限个正方形的经典问题，并把它与本项目所采用的实时构造算法并置考察。我们首先回顾 Dehn 的可解性定理——长宽比为有理数当且仅当存在有限正方形剖分——并用欧几里得算法与连分数给出构造性一半；继而引入 Brooks–Smith–Stone–Tutte 的 Smith 图，把剖分翻译为单位电阻网络，得到 Kirchhoff 电流定律、Ohm 定律以及等效电阻 R<sub>eq</sub> = W/H。在回顾 Moroń、Sprague、Duijvestijn 等里程碑之后，文章详细推导本项目的多焦点尺寸场 target(d) = F·clamp(d/R, 0, 1)<sup>p</sup>、四叉树 LOD、基于 BigInt 的 80 位定点算术、以及基于扫描线邻接图的异色贪心着色，最后给出 34 项自动化断言与复杂度讨论。全文所有插图均为内联 SVG，不依赖任何外部资源。</p>
   </div>
   <p class="keywords"><b>关键词：</b>正方形剖分矩形；连分数；Smith 图；电网络类比；四叉树 LOD；定点高精度；图着色；完美平方方</p>
 </header>
@@ -306,14 +306,14 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 <p>与经典问题不同，本项目并不追求一个固定的、块数最少的剖分，而是要在任意缩放层级上实时生成一张「近处极密、远处极大」的剖分。做法是构造一个连续的目标边长场。设世界由 m × n 个边长为 L = 2<sup>D</sup> 的宏块组成（D 为整数深度，故 L 在二进制下精确），焦点集合为 {f<sub>j</sub>}，则任一点 p 到最近焦点的距离为</p>
 <div class="eq"><span class="eqn">(5.1)</span><var>d</var>(<var>p</var>) = min<sub>j</sub> ‖<var>p</var> − <var>f</var><sub>j</sub>‖<sub>2</sub>.</div>
 <p>目标边长定义为</p>
-<div class="eq"><span class="eqn">(5.2)</span>target(<var>d</var>) = <var>L</var> · clamp(<span class="frac"><i><var>d</var></i><b><var>R</var></b></span>, 0, 1)<sup><var>p</var></sup>, &nbsp; clamp(<var>x</var>,0,1) = min(1, max(0, <var>x</var>)).</div>
-<p>这里 R 是影响半径，p &gt; 0 是形状指数（项目默认 p = 2.4，可在 1–5 间调节）。指数越大，曲线在焦点附近越陡、细分越集中；p = 1 时退化为线性场。由于 L = 2<sup>D</sup>、坐标均为 dyadic，所有方块边长都能被二进制精确表示，为后文的整数网格哈希与邻接判定打下基础。</p>
+<div class="eq"><span class="eqn">(5.2)</span>target(<var>d</var>) = <var>F</var> · clamp(<span class="frac"><i><var>d</var></i><b><var>R</var></b></span>, 0, 1)<sup><var>p</var></sup>, &nbsp; clamp(<var>x</var>,0,1) = min(1, max(0, <var>x</var>)).</div>
+<p>这里 F = min(W, H) 是欧几里得最少方块骨架的最大边长（远场上限），R 是影响半径，p &gt; 0 是形状指数（项目默认 p = 2.4，可在 1–5 间调节）。指数越大，曲线在焦点附近越陡、细分越集中；p = 1 时退化为线性场。由于 L = 2<sup>D</sup>、坐标均为 dyadic，所有方块边长都能被二进制精确表示，为后文的整数网格哈希与邻接判定打下基础。</p>
 <p>从宏块出发做四叉细分：对每个候选方块，把中心点代入尺寸场，若<strong>同时</strong>满足</p>
 <div class="eq"><span class="eqn">(5.3)</span><var>s</var> &gt; 1.35 · target(中心) &nbsp;且&nbsp; <var>s</var> · scale &gt; 2.1 · minPx,</div>
 <p>则把它等分为四个 s/2 的子方块并递归，否则输出该方块。第一个不等式是几何判据（方块比目标尺寸粗就继续细分）；第二个是屏幕像素判据——若细分后的方块在屏幕上已不足 minPx 像素，再细分只会浪费。scale 是每世界单位对应的屏幕像素数。注意两个判据是「与」关系：像素判据是消融性的安全阀，绝不会反过来在远场制造小方块。</p>
 <p>这个构造有一个关键性质：当 d ≥ R 时 clamp(d/R, 0, 1) = 1，于是</p>
-<div class="eq"><span class="eqn">(5.4)</span>target(<var>d</var>) = <var>L</var> · 1<sup><var>p</var></sup> = <var>L</var> &nbsp; (<var>d</var> ≥ <var>R</var>).</div>
-<p>而任何方块边长 s 都不超过宏块边长 L，故 s &gt; 1.35·L 永不成立——<strong>远端严格不会产生小方块</strong>。尺寸场把「细分预算」全部集中在焦点附近，远处保持大块，这正是图 7 中「远端大块 / 近端密块」的直接来源，也是 §9 中断言「远场 target = L」所验证的性质。</p>
+<div class="eq"><span class="eqn">(5.4)</span>target(<var>d</var>) = <var>F</var> · 1<sup><var>p</var></sup> = <var>F</var> = min(<var>W</var>, <var>H</var>) &nbsp; (<var>d</var> ≥ <var>R</var>).</div>
+<p>而欧几里得最少方块骨架的最大方块恰为 F = min(W, H)，故 s &gt; 1.35·F 永不成立——<strong>远端严格不会产生小方块，并保留数量最少的大方块</strong>。尺寸场把「细分预算」全部集中在焦点附近，远处保持大块，这正是图 7 中「远端大块 / 近端密块」的直接来源，也是 §9 中断言「远场保持最少方块骨架」所验证的性质。</p>
 <figure>
 <svg viewBox="0 0 600 260" style="width:100%;height:auto" role="img" aria-label="target(d) curves for three exponents">
   <line x1="60" y1="210" x2="590" y2="210" style="fill:none;stroke:var(--line);stroke-width:1.2"/>
@@ -344,9 +344,9 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
   <text x="534" y="226" font-size="11" style="fill:var(--muted);stroke:none">1</text>
   <text x="562" y="226" font-size="12" style="fill:var(--muted);stroke:none">d/R</text>
   <text x="496" y="226" font-size="11" style="fill:var(--muted);stroke:none">d = R</text>
-  <text x="150" y="242" font-size="12" style="fill:var(--accent-2);stroke:none">远场 d ≥ R ⟹ target = L（水平渐近，无小方块）</text>
+  <text x="150" y="242" font-size="12" style="fill:var(--accent-2);stroke:none">远场 d ≥ R ⟹ target = F（水平渐近，无小方块）</text>
 </svg>
-<figcaption>Figure 5. target(d) = L·clamp(d/R, 0, 1)<sup>p</sup>：取 p = 1、2.4（项目默认）、4 三条曲线。指数越大，近焦点处目标边长越小；d ≥ R 时曲线饱和于 target = L，远端严格不产生小方块。</figcaption>
+<figcaption>Figure 5. target(d) = F·clamp(d/R, 0, 1)<sup>p</sup>：取 p = 1、2.4（项目默认）、4 三条曲线。指数越大，近焦点处目标边长越小；d ≥ R 时曲线饱和于 target = F = min(W, H)，远端严格不产生小方块（保留最少方块骨架）。</figcaption>
 </figure>
 <p>四叉分裂不是在原方块旁添加新方块，而是把父块本身划分成四个互不重叠、恰好铺满父块的子块；由归纳法，任意迭代次数后叶节点集合仍精确覆盖整个世界，覆盖率 100%、重叠为 0（由 §9 的 validate 断言验证）。</p>
 <figure>
@@ -410,14 +410,14 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
   <rect x="300" y="264" width="14" height="14" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
   <text x="320" y="276" font-size="12" style="fill:var(--muted);stroke:none">近端 s ≪ L（d → 0，递归细分）</text>
 </svg>
-<figcaption>Figure 7. 两个焦点（虚线圆为影响半径 R）附近的尺寸场：远场 d ≥ R 处 target = L，只保留宏块；焦点附近 target → 0，四叉细分产生密集小块。全部方块仍精确铺满视口、零重叠。</figcaption>
+<figcaption>Figure 7. 两个焦点（虚线圆为影响半径 R）附近的尺寸场：远场 d ≥ R 处 target = F = min(W, H)，只保留欧几里得最少方块骨架的大块；焦点附近 target → 0，四叉细分产生密集小块。全部方块仍精确铺满视口、零重叠。</figcaption>
 </figure>
 </section>
 
 <!-- Section 6 -->
 <section id="s6">
 <h2><span class="num">6.</span>LOD 与近无限放大</h2>
-<p>「近无限」放大并非真的存储无限层几何，而是按<strong>屏幕像素尺寸</strong>决定细分深度（level of detail）。生成器只遍历与当前视口相交的宏块：完全落在视口之外的方块直接剪枝，因此任意时刻只生成可见方块。minPx 给出屏幕上的最小方块像素尺寸，(5.3) 中的 s·scale &gt; 2.1·minPx 保证叶块的屏幕尺寸稳定在约 2.1·minPx 附近——这正是 §9 中 10<sup>9</sup> 倍放大下 26,352 个方块<strong>全部</strong>为 7.45 px 的原因：自适应回退把整幅图锁定在同一细分级别上。</p>
+<p>「近无限」放大并非真的存储无限层几何，而是按<strong>屏幕像素尺寸</strong>决定细分深度（level of detail）。生成器只遍历与当前视口相交的宏块：完全落在视口之外的方块直接剪枝，因此任意时刻只生成可见方块。minPx 给出屏幕上的最小方块像素尺寸，(5.3) 中的 s·scale &gt; 2.1·minPx 保证叶块的屏幕尺寸稳定在约 2.1·minPx 附近——这正是 §9 中 10<sup>9</sup> 倍放大下 46,781 个方块<strong>全部</strong>为 5.59 px 的原因：自适应回退把整幅图锁定在同一细分级别上。</p>
 <p>细分不能无限进行，故设有块数上限 maxBlocks（默认 60000）与最大深度 maxDepth（默认 48）。一旦块数触顶，生成器不是截断输出、造成「一半极密、一半被迫大块」的拼接缝，而是把 minPx 乘以 1.8 调粗后<strong>整幅重生成</strong>，最多重试 7 次；若仍触顶，则以 minPx×3 且无块数上限的方式生成一幅完整但较粗的图。这样整个视口始终维持同一细分级别，画面不会随平移而闪烁或出现密度断层。</p>
 <p>复杂度方面，设屏幕像素面积为 A = W<sub>px</sub>·H<sub>px</sub>，若每个叶块至少占约 minPx<sup>2</sup> 像素，则可见块数满足</p>
 <div class="eq"><span class="eqn">(6.1)</span><var>N</var> ≤ <span class="frac"><i><var>A</var></i><b>minPx<sup>2</sup></b></span> · <var>C</var>, &nbsp; <var>C</var> = O(1), &nbsp; <var>D</var><sub>tree</sub> = O(log <span class="frac"><i><var>L</var></i><b>minPx / scale</b></span>).</div>
@@ -495,7 +495,7 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 <h2><span class="num">8.</span>邻接图、异色着色与稳定微扰</h2>
 <p>为了让相邻方块可区分，先要构造<strong>共边邻接图</strong>。所有方块边长都是同一最小边长 minS 的整数倍（dyadic 坐标），把坐标归一化为整数键后，按同一条分割线把左右（或上下）两侧的区间分别排序，再用双指针线性归并，即可枚举所有共边对：</p>
 <div class="eq"><span class="eqn">(8.1)</span><var>T</var><sub>build</sub> = O(<var>n</var> log <var>n</var>) &nbsp;(排序主导), &nbsp; |<var>E</var>| = 2<var>n</var> + O(√<var>n</var>).</div>
-<p>§9 中 10<sup>9</sup> 倍放大下得到 |E| = 52,366 条邻接边，且扫描线是精确整数归并，不依赖浮点比较，因此在极小尺度下也不会漏边或多边。</p>
+<p>§9 中 10<sup>9</sup> 倍放大下得到 |E| = 93,112 条邻接边，且扫描线是精确整数归并，不依赖浮点比较，因此在极小尺度下也不会漏边或多边。</p>
 <p>着色按<strong>边长降序</strong>处理（大方块先定色、小方块后补），对每块施加硬约束：任何相邻两块不得取同一调色板索引：</p>
 <div class="eq"><span class="eqn">(8.2)</span><var>c</var>(<var>u</var>) = min { <var>k</var> ∈ <var>P</var> : ∀ <var>v</var> ∈ <var>N</var>(<var>u</var>), <var>c</var>(<var>v</var>) ≠ <var>k</var> }, &nbsp; <var>P</var> = {0, …, 31}.</div>
 <p>调色板为 <strong>32 色低饱和</strong>色，明度限制在 36%–72%、饱和度适中，并显式排除纯黑、纯白与中性灰（§9 断言 minS = 80、minL = 50）。值得一提的是，四色定理只保证「平面图的邻接异色 4-着色<strong>存在</strong>」，并不给出构造、也不保证视觉上的区分度；本项目用的是更多颜色（32 色）的贪心构造，配合目标色相与稳定微扰，换取稳健且美观的可分辨性。</p>
@@ -557,31 +557,92 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 <!-- Section 9 -->
 <section id="s9">
 <h2><span class="num">9.</span>验证与复杂度</h2>
-<p>项目的 <code>node tests/verify.js</code> 以 <strong>24 项断言</strong>覆盖上述全部机制，且全部通过（ALL PASS）。几何方面：面积守恒比值 1.000000、零空隙（gaps = 0）、零重叠（overlaps = 0）；深空方面：10<sup>9</sup> 倍放大生成 26,352 个方块，其屏幕尺寸<strong>全部</strong>为 7.45 px（minPx = maxPx = 7.45 px，说明 LOD 自适应把整幅图稳定在同一细分级别）；着色方面：52,366 条邻接边中同色对为 0（same = 0），低饱和调色板在全视图保持 30 个不同色相、深放大保持 16 个色相桶，且无黑/白/灰填充（minS = 28.0、minL = 43.0）；哈希方面：4096 个连续整数坐标的哈希值互不重复（unique = 4096）。</p>
-<div class="eq"><span class="eqn">(9.1)</span><span class="frac"><i>通过断言</i><b>总断言</b></span> = <span class="frac"><i>24</i><b>24</b></span> = 100%, &nbsp; gaps = overlaps = same = 0, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> / (<var>W</var><var>H</var>) = 1.000000.</div>
-<p>数值方面：BigDec 满足 0.1 + 0.2 = 0.3、10<sup>−30</sup> × 10<sup>9</sup> = 10<sup>−21</sup>，40 次锚点缩放后 scale ≈ 1.413×10<sup>11</sup> 仍为有限值；尺寸场方面：焦点中心目标尺寸远小于远场（near ≈ 0，far = 256 = L），且远场严格等于宏块边长 L；经典模式方面：euclid 与 network 在 7 种长宽比下都精确铺满整个外框（面积比 1.000000、零空隙），Moroń 九块边长平方和恰为 1056 = 33×32，细分阶数由 0 升至 4 使方块数从 2,638 增至 53,848，44,851 块的密集剖分仍零空隙。这些断言把「宏观正确」与「深空不退化」同时钉死，任何一处回归都会立刻暴露。</p>
+<p>项目的 <code>node tests/verify.js</code> 以 <strong>34 项断言</strong>覆盖上述全部机制，且全部通过（ALL PASS）。几何方面：面积守恒比值 1.000000、零空隙（gaps = 0）、零重叠（overlaps = 0）；深空方面：10<sup>9</sup> 倍放大生成 46,781 个方块，其屏幕尺寸<strong>全部</strong>为 5.59 px（minPx = maxPx = 5.59 px，说明 LOD 自适应把整幅图稳定在同一细分级别）；着色方面：93,112 条邻接边中同色对为 0（same = 0），低饱和调色板在全视图保持 25 个不同色相、深放大保持 16 个色相桶，且无黑/白/灰填充（minS = 28.0、minL = 43.0）；哈希方面：4096 个连续整数坐标的哈希值互不重复（unique = 4096）。</p>
+<div class="eq"><span class="eqn">(9.1)</span><span class="frac"><i>通过断言</i><b>总断言</b></span> = <span class="frac"><i>34</i><b>34</b></span> = 100%, &nbsp; gaps = overlaps = same = 0, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> / (<var>W</var><var>H</var>) = 1.000000.</div>
+<p>数值方面：BigDec 满足 0.1 + 0.2 = 0.3、10<sup>−30</sup> × 10<sup>9</sup> = 10<sup>−21</sup>，40 次锚点缩放后 scale ≈ 1.413×10<sup>11</sup> 仍为有限值；尺寸场方面：焦点中心目标尺寸远小于远场（near ≈ 0，far = 3072 = min(W, H)），且远场骨架最大方块恰为 3072，因而不被细分；经典模式方面：euclid 与 network 在 7 种长宽比下都精确铺满整个外框（面积比 1.000000、零空隙），Moroń 九块边长平方和恰为 1056 = 33×32，细分阶数由 0 升至 4 使方块数从 3 增至 49,923，77,751 块的密集剖分仍零空隙。这些断言把「宏观正确」与「深空不退化」同时钉死，任何一处回归都会立刻暴露。</p>
 <p>复杂度汇总：生成 O(N)，邻接 O(N log N)，着色 O(N·|P|·deg) 但因 deg 有界而近似 O(N)，验证 O(N log N)；N 由屏幕像素预算 (6.1) 而非世界尺度界定。此外在浏览器中通过 CDP 真实设备模拟对 390×844、360×800、844×390、1600×900 四种视口逐一检查，文档均无横向溢出、公式块可横向滚动而不撑破布局——保证 390 px 手机与 1000 px 桌面同样可读。所有断言都可在离线、零依赖的 Node 环境下复现。</p>
 </section>
 
-<!-- Section 10 -->
 <section id="s10">
-<h2><span class="num">10.</span>参考文献</h2>
-<p>本文所依据的文献跨越 1903 至 1978 年，恰好构成一条从可解性判据、经电网络类比到计算穷举的完整脉络；以下按年代先后列出，便于按图索骥。</p>
-<ol class="refs">
-  <li>M. Dehn, <span class="ref-j">Über die Zerlegung von Rechtecken in Rechtecke</span>, Mathematische Annalen 57 (1903), 314–332.（矩形可正方形剖分性的可加不变量方法，Dehn 不变量的雏形。）</li>
-  <li>Z. Moroń, <span class="ref-j">O rozkładach prostokątów na kwadraty</span>, Przegląd Matematyczno-Fizyczny 3 (1925), 152–153.（首个完美矩形：33×32，九块。）</li>
-  <li>R. Sprague, <span class="ref-j">Beispiel einer Zerlegung des Quadrats in lauter verschiedene Quadrate</span>, Mathematische Zeitschrift 45 (1939), 607–608.（首个完美平方方。）</li>
-  <li>R. L. Brooks, C. A. B. Smith, A. H. Stone, W. T. Tutte, <span class="ref-j">The dissection of rectangles into squares</span>, Duke Mathematical Journal 7 (1940), 312–340.（Smith 图与电网络类比。）</li>
-  <li>J. H. Conway, <span class="ref-j">Mrs. Perkins's Quilt</span>, Proceedings of the Cambridge Philosophical Society 60 (1964), 363–368.（本原剖分与最少块数问题。）</li>
-  <li>A. J. W. Duijvestijn, <span class="ref-j">Simple perfect squared square of lowest order</span>, Journal of Combinatorial Theory, Series B 25 (1978), 240–243.（21 阶、112×112 的最低阶解。）</li>
-  <li>Wikipedia contributors, <span class="ref-j">Squaring the square</span>; <span class="ref-j">Continued fraction</span>; <span class="ref-j">Smith diagram</span>, en.wikipedia.org（条目名，检索线索，非资源依赖）。</li>
-</ol>
-<p class="note">参考文献中的域名仅作检索线索；本文所有样式、脚本与插图均内联，完全离线可读，不发起任何资源请求。</p>
+<h2><span class="num">10.</span>成熟算法、最少方块问题与工程实现</h2>
+<p>第 2–5 章给出的是本项目采用的构造。为了让读者判断它在整个研究谱系中的位置，本章专门梳理已发表的成熟算法，并如实说明我们所用策略的理论边界。结论先行：<strong>「用最少正方形铺满矩形」是一个有精确下界、有多项式式构造、也有整数规划精确解的组合优化问题；欧几里得贪心只是其中最易实现、覆盖最稳的一支，并非全局最优解。</strong></p>
+
+<h3>10.1 电网络路线的完整枚举</h3>
+<p>Brooks–Smith–Stone–Tutte 之后，问题被彻底转化为「枚举 3-连通平面图」。由 Steinitz 定理，3-连通平面图恰是多面体的 1-骨架；Tutte 的轮定理给出递归生成全部 c-net 的方法。Duijvestijn 与 Bouwkamp 在 1962 年前后据此用计算机生成 c-net、以同构约简去重，再把每个 c-net 选定一条极性边当作单位电阻网络，联立 Kirchhoff 方程、用矩阵树定理求各支路电流；这些整数电流就是方块边长。结果用 <strong>Bouwkampcode</strong>（按节点电势降序，逐行列出水平相邻的方块边长，用括号分组）或 <strong>tablecode</strong> 编码归档。1978 年 Duijvestijn 对 22 条边的 c-net 完成穷举，得到唯一的最低阶 21 阶简单完美平方方。现代实现改用 <a href="https://users.cecs.anu.edu.au/~bdm/plantri/" target="_blank" rel="noopener noreferrer">plantri</a>（McKay–Brinkmann），每个同构类只生成一个成员，避免早期方法的大量重复；Anderson 进一步 用「2-连通、最小度 3」的平面嵌入类处理复合完美平方方（CPSS），并用同一套 Kirchhoff / 矩阵树流程求解。Gambini 的数值分解法则从另一方向直接枚举给定阶数的分解。</p>
+<div class="eq"><span class="eqn">(10.1)</span> <var>I</var><sub>e</sub> = <var>s</var><sub>e</sub> (<var>R</var><sub>e</sub> = 1 Ω), &nbsp; <var>B</var> = det(<var>K</var>) · <var>K</var><sup>−1</sup><var>J</var>, &nbsp; |<var>E</var>| = Σ<var>a</var><sub>i</sub> · (c-net 规模)</div>
+
+<h3>10.2 有限细分规则与替换式子网络</h3>
+<p>Cannon、Floyd 与 Parry 在 1994 年提出用<strong>有限细分规则</strong>递归替换剖分中的方块（程序 <code>subdivide.c</code> 生成、<code>squarect.c</code> 输出），阶数随层数指数增长，稳定地产生不完美与复合剖分。本项目第 4 章的 L 形阶梯替换与 Moroń 42 块子网络嵌入正是这一范式的两个显式实例：每次替换都是对父正方形的划分，因此覆盖率在任意层数下恒为 1。它们与上文「枚举 c-net 求完美解」是互补的——前者保证精确覆盖与任意密度，后者保证边长互异与最低阶。</p>
+
+<h3>10.3 最少方块数：Kenyon 的界与贪心的局限</h3>
+<p>Kenyon（1996）研究「用最少个整数边长正方形铺满 p×q 矩形」（MTRS）：互素 p×q 至少需要 log₂p 块，且存在少于 q/p + C·log p 块的构造；证明同样借助电网络的有效电阻。他也明确指出欧几里得贪心（每次切下最大可容纳正方形）的代价恰为连分数部分商之和，而且对 p×(p+1) 矩形要 1+p 块，远劣于 O(log p) 的最优构造。Monaci 与 dos Santos（2014）给出 MTRS 的整数线性规划与启发式，Kurz（2012）给出带边长上界的 ILP，Walters 把界推广到高维。</p>
+<div class="eq"><span class="eqn">(10.2)</span> <var>N</var><sub>greedy</sub>(<var>p</var>,<var>q</var>) = <var>a</var><sub>0</sub> + <var>a</var><sub>1</sub> + … + <var>a</var><sub>k</sub>, &nbsp; <var>q</var>/<var>p</var> = [<var>a</var><sub>0</sub>;<var>a</var><sub>1</sub>,…,<var>a</var><sub>k</sub>]</div>
+<div class="eq"><span class="eqn">(10.3)</span> <var>N</var><sub>opt</sub>(<var>p</var>,<var>q</var>) ≥ log<sub>2</sub><var>p</var>, &nbsp; <var>N</var><sub>opt</sub> &lt; <var>q</var>/<var>p</var> + <var>C</var> log <var>p</var>; &nbsp; <var>N</var><sub>greedy</sub>(<var>p</var>,<var>p</var>+1) = <var>p</var>+1 ≫ <var>N</var><sub>opt</sub> = <var>O</var>(log <var>p</var>)</div>
+<p>因此本项目把欧几里得骨架称为<strong>「最少方块填充策略」时，指的是「远场保持贪心骨架的 Σaᵢ 个大块、不再细分」，而不是宣称达到 MTRS 的全局最优</strong>。它的价值在于：整数比 m:n 下所有边长二进制精确、O(k) 次辗转相除即可构造、与后续四叉树/阶梯细分复合后仍严格 100% 覆盖。焦点附近的加密则把「远场最少块、近场无限细」这一对矛盾转成可控的尺度场问题。</p>
+
+<h3>10.4 工程实现：C++ WASM 多核与桌面安装</h3>
+<p>剖分热点被写成零依赖的 C++17 内核（<code>native/tiling_core.cpp</code>），用 Zig 附带的 clang 直接编译为 <code>wasm32-freestanding</code> 模块（约 9 KB，仅导入一块线性内存）。浏览器把欧几里得骨架切成互不重叠的根区域，交给一个 Web Worker 池，每个 Worker 持有独立的 WASM 实例并以 transferable buffer 回传结果；首帧由主线程 WASM 同步出图，随后各帧并行。之所以不采用 wasm pthread 的共享线性内存，是因为它要求文档带 COOP/COEP 响应头，而 GitHub Pages 不允许设置；可选的 <code>?coi=1</code> 通过 Service Worker 注入头（<a href="https://github.com/gzuidhof/coi-serviceworker" target="_blank" rel="noopener noreferrer">coi-serviceworker</a> 思路）实现真正的 SharedArrayBuffer，代价是首次访问需刷新一次。同一 Service Worker 还负责离线缓存与 <a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable" target="_blank" rel="noopener noreferrer">PWA 桌面安装</a>（manifest 的 192/512 px 图标与 <code>display: standalone</code>）。</p>
+
+<figure>
+<svg viewBox="0 0 820 250" width="100%" style="height:auto" role="img" aria-label="Established algorithm families and the WASM worker pool">
+  <rect x="0" y="0" width="820" height="250" fill="var(--fill)" stroke="none"/>
+  <text x="14" y="24" font-size="13" style="fill:var(--ink);stroke:none;font-weight:600">成熟算法谱系 / Established algorithm families</text>
+  <g font-size="11" style="fill:var(--ink);stroke:none">
+    <rect x="14" y="40" width="150" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="24" y="62">Smith 电网络 / c-nets</text>
+    <rect x="190" y="40" width="150" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="200" y="62">plantri 去重枚举</text>
+    <rect x="366" y="40" width="170" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="376" y="62">Kirchhoff / 矩阵树</text>
+    <rect x="562" y="40" width="160" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="572" y="62">Bouwkampcode → SPSS</text>
+    <rect x="14" y="92" width="150" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="24" y="114">欧几里得 / 连分数</text>
+    <rect x="190" y="92" width="150" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="200" y="114">有限细分规则</text>
+    <rect x="366" y="92" width="170" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="376" y="114">本项目：阶梯 / 四叉</text>
+    <rect x="562" y="92" width="160" height="34" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="572" y="114">MTRS：Kenyon / ILP</text>
+  </g>
+  <g stroke="var(--accent)" stroke-width="1.3" fill="none">
+    <path d="M164 57 H190 M340 57 H366 M536 57 H562"/>
+    <path d="M164 109 H190 M340 109 H366 M536 109 H562"/>
+    <path d="M89 74 V92 M276 74 V92" stroke-dasharray="3 3"/>
+  </g>
+  <text x="14" y="152" font-size="12" style="fill:var(--ink);stroke:none;font-weight:600">C++ WASM 多线程 / worker pool</text>
+  <g font-size="10.5" style="fill:var(--ink);stroke:none">
+    <rect x="14" y="164" width="126" height="40" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="24" y="181">最少方块骨架</text><text x="24" y="196">Σaᵢ 个根块</text>
+    <rect x="164" y="164" width="126" height="40" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="174" y="181">四叉预分片</text><text x="174" y="196">独立任务队列</text>
+    <rect x="314" y="164" width="126" height="40" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="324" y="181">Worker ×8</text><text x="324" y="196">各自 WASM 实例</text>
+    <rect x="464" y="164" width="126" height="40" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="474" y="181">transfer 结果</text><text x="474" y="196">主线程合并</text>
+    <rect x="614" y="164" width="180" height="40" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="624" y="181">邻接异色 + 光栅化</text><text x="624" y="196">与 JS 生成器逐块一致</text>
+  </g>
+  <g stroke="var(--accent)" stroke-width="1.3" fill="none"><path d="M140 184 H164 M290 184 H314 M440 184 H464 M590 184 H614"/></g>
+  <text x="14" y="230" font-size="11" style="fill:var(--muted);stroke:none">Figure 12. 上：从电网络枚举到最少方块问题的两条研究路线；下：本项目把独立根区域分发给多个 C++/WASM Worker，结果与纯 JS 生成器逐块一致。</text>
+</svg>
+<figcaption>Figure 12. 成熟算法谱系与本项目 WASM 多线程数据流。上排为「枚举 3-连通平面图 → 解 Kirchhoff 方程 → Bouwkampcode 归档 → 完美平方方」的经典路线；中排为连分数、有限细分规则、MTRS 下界与整数规划；下排为 C++ 内核的 Worker 池调度。</figcaption>
+</figure>
 </section>
 
-<!-- Section 11 -->
+<!-- Section 11 (references) -->
 <section id="s11">
-<h2><span class="num">11.</span>附录：参数与交互</h2>
+<h2><span class="num">11.</span>参考文献</h2>
+<p>本文所依据的文献跨越 1903 至 2026 年，构成一条从可解性判据、经电网络类比与计算穷举，到最少方块问题、有限细分规则及现代 WebAssembly 工程的完整脉络；以下大体按年代与主题排列，所有链接均可点击。</p>
+<ol class="refs">
+  <li>M. Dehn, <a href="https://en.wikipedia.org/wiki/Dehn_invariant" target="_blank" rel="noopener noreferrer">Über die Zerlegung von Rechtecken in Rechtecke</a>, Mathematische Annalen 57 (1903), 314–332.（Dehn 不变量与可解性判据。）</li>
+  <li>Z. Moroń, <a href="https://www.squaring.net/sq/ss/tws.html" target="_blank" rel="noopener noreferrer">O rozkładach prostokątów na kwadraty</a>, Przegląd Matematyczno-Fizyczny 3 (1925), 152–153.（首个完美矩形 33×32，九块。）</li>
+  <li>R. Sprague, <a href="https://en.wikipedia.org/wiki/Squaring_the_square" target="_blank" rel="noopener noreferrer">Beispiel einer Zerlegung des Quadrats in lauter verschiedene Quadrate</a>, Mathematische Zeitschrift 45 (1939), 607–608.</li>
+  <li>R. L. Brooks, C. A. B. Smith, A. H. Stone, W. T. Tutte, <a href="https://www.squaring.net/sq/ss/tws.html" target="_blank" rel="noopener noreferrer">The dissection of rectangles into squares</a>, Duke Mathematical Journal 7 (1940), 312–340.（Smith 图与电网络类比。）</li>
+  <li>J. H. Conway, <a href="https://en.wikipedia.org/wiki/Mrs._Perkins%27s_quilt" target="_blank" rel="noopener noreferrer">Mrs. Perkins's Quilt</a>, Proc. Cambridge Phil. Soc. 60 (1964), 363–368.（本原剖分与最少块数问题。）</li>
+  <li>A. J. W. Duijvestijn, <a href="https://www.squaring.net/sq/ss/spss/o21/spsso21.html" target="_blank" rel="noopener noreferrer">Simple perfect squared square of lowest order</a>, J. Combin. Theory Ser. B 25 (1978), 240–243.（21 阶、112×112 唯一最低阶解。）</li>
+  <li>R. Kenyon, <a href="https://arxiv.org/abs/math/9411215" target="_blank" rel="noopener noreferrer">Tiling a rectangle with the fewest squares</a>, J. Combin. Theory Ser. A 76 (1996), 272–291；<a href="https://arxiv.org/html/math/9411215v1" target="_blank" rel="noopener noreferrer">arXiv:math/9411215</a>.（下界 log₂p 与贪心非最优反例。）</li>
+  <li>M. Monaci, A. G. dos Santos, <a href="http://www.din.uem.br/sbpo/sbpo2014/pdf/arq0373.pdf" target="_blank" rel="noopener noreferrer">Minimum Tiling of a Rectangle by Squares</a>, SBPO 2014.（MTRS 的整数规划与启发式。）</li>
+  <li>S. E. Anderson, <a href="https://arxiv.org/abs/1303.0599" target="_blank" rel="noopener noreferrer">Compound Perfect Squared Squares of the Order Twenties</a>, arXiv:1303.0599 (2013).（Bouwkampcode、p-net 与矩阵树定理的现代处理。）</li>
+  <li>J. W. Cannon, W. J. Floyd, W. R. Parry, <a href="https://www.squaring.net/sq/ss/tws.html" target="_blank" rel="noopener noreferrer">Squaring rectangles: the finite Riemann mapping theorem</a>, Contemp. Math. 169 (1994).（有限细分规则、subdivide.c / squarect.c。）</li>
+  <li>B. D. McKay, G. Brinkmann, <a href="https://users.cecs.anu.edu.au/~bdm/plantri/" target="_blank" rel="noopener noreferrer">plantri — planar graph generator</a>.（3-连通平面图的无重复生成。）</li>
+  <li><a href="https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem" target="_blank" rel="noopener noreferrer">Kirchhoff's Matrix–Tree Theorem</a>；<a href="https://en.wikipedia.org/wiki/Continued_fraction" target="_blank" rel="noopener noreferrer">Continued fraction</a>；<a href="https://en.wikipedia.org/wiki/Smith_diagram" target="_blank" rel="noopener noreferrer">Smith diagram</a>；<a href="https://en.wikipedia.org/wiki/Squaring_the_square" target="_blank" rel="noopener noreferrer">Squaring the square</a>（维基百科条目，含进一步书目）。</li>
+  <li><a href="https://emscripten.org/docs/porting/pthreads.html" target="_blank" rel="noopener noreferrer">Emscripten: Pthreads support</a>；<a href="https://web.dev/articles/coop-coep" target="_blank" rel="noopener noreferrer">web.dev: COOP / COEP</a>；<a href="https://github.com/gzuidhof/coi-serviceworker" target="_blank" rel="noopener noreferrer">coi-serviceworker</a>；<a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable" target="_blank" rel="noopener noreferrer">MDN: Making PWAs installable</a>.（WebAssembly 多线程与桌面安装的工程依据。）</li>
+  <li><a href="https://www.squaring.net/sq/ss/cpss/cpss.html" target="_blank" rel="noopener noreferrer">Squaring.Net — Compound Perfect Squared Squares, orders 24–86</a>.（Bouwkampcode / tablecode 目录与 c-net 计数表。）</li>
+</ol>
+<p class="note">以上链接均为可点击的<strong>外部检索入口</strong>（在新标签页打开），不是本页的资源依赖：所有样式、脚本与插图仍完全内联，断网时本文依旧可读。</p>
+</section>
+
+<!-- Section 12 (appendix) -->
+<section id="s12">
+<h2><span class="num">12.</span>附录：参数与交互</h2>
 <p>下表汇总全文出现的主要符号与可调参数，并给出项目控制台的默认值；随后说明与父页面 iframe 的交互约定。图 11 作为补充图版给出一个 21 阶完美平方方的结构示意。</p>
 <table>
 <caption>表 A. 主要参数、含义与取值（默认值对应项目控制台初始状态）。</caption>
@@ -673,7 +734,7 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 </figure>
 </section>
 
-<p class="foot">方形剖分实验室 · 技术论文　|　中英双语 · 零外部依赖 · 内联 SVG 图解　|　版本 1.0</p>
+<p class="foot">方形剖分实验室 · 技术论文　|　中英双语 · 零外部依赖 · 内联 SVG 图解　|　版本 1.2 · 新增第 10 章：成熟算法与 WASM 多核工程</p>
 
 </article>
 </body>

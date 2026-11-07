@@ -36,7 +36,8 @@
     renderQueue: null, raf: 0, dirty: true, anim: null,
     hover: -1, hoverRect: null, wheelTimer: 0,
     pinch: null, touches: new Map(),
-    consoleOpen: true, modalOpen: false
+    consoleOpen: true, modalOpen: false,
+    pending: false, genToken: 0, parallelDisabled: false
   };
 
   /* ------------------------------ Core ------------------------------ */
@@ -156,10 +157,22 @@
     if (!ratio && state.rectN) ratio = state.rectN.w / state.rectN.h;
     if (!ratio) { toast(T.t('emptyWarn')); return; }
 
+    var oldWorld = state.world;
     var world = S.buildWorld(ratio, { depth: +$('detail').value, rows: 12 });
     state.world = world;
     state.mode = $('algoMode').value;
-    state.foci = S.defaultFoci(world, +$('centers').value, seed());
+    // User-placed dense centres survive a mode switch or a redrawn rectangle;
+    // they are rescaled into the new world instead of being reset.
+    if (o.keepFoci !== false && oldWorld && state.foci.length && state.phase === 'result') {
+      state.foci = state.foci.map(function (f) {
+        return {
+          x: clamp(f.x / oldWorld.gw * world.gw, 0, world.gw),
+          y: clamp(f.y / oldWorld.gh * world.gh, 0, world.gh)
+        };
+      });
+    } else {
+      state.foci = S.defaultFoci(world, +$('centers').value, seed());
+    }
     state.cache.clear();
     // Classic tilings are generated per frame (viewport-driven LOD), so no
     // static block list has to be precomputed or kept in memory.
@@ -186,33 +199,44 @@
     requestRender(true);
   }
 
-  function regenerate() {
-    if (state.phase !== 'result' || !state.world) return;
-    var t0 = performance.now();
-    var w = state.world, v = viewport(), animating = !!state.anim;
-    var minPx = 1.7;
+  /** Parameters shared by the synchronous kernel and the parallel workers. */
+  function frameOpts(animating) {
+    var w = state.world, minPx = 1.7;
     if (animating) {
       var p = clamp((performance.now() - state.anim.start) / state.anim.duration, 0, 1);
       minPx = 1.7 + 300 * Math.pow(1 - p, 2.2);
     }
-    var opts = {
+    return {
       foci: state.foci,
       power: +$('power').value,
       maxDepth: 48,
-      radius: Math.min(w.gw, w.gh) * 0.62,
+      radius: Math.min(w.gw, w.gh) * (+$('radius').value),
       minPx: minPx,
+      boost: clamp(0.5 + (+$('order').value) * 0.04, 0, 0.85),
       maxBlocks: animating ? 14000 : 100000
     };
+  }
+
+  function regenerate(prepared, view, options) {
+    if (state.phase !== 'result' || !state.world) return;
+    var t0 = performance.now();
+    var w = state.world, v = view || viewport(), animating = !!state.anim;
+    var opts = options || frameOpts(animating);
 
     // Quadtree tiles are always expressed in viewport-local coordinates.
+    // The first frame uses the synchronous C++/WASM kernel; later frames are
+    // computed by the worker pool and passed in as `prepared`.
     var blocks;
     if (state.mode === 'quad') {
-      blocks = S.generate(w, v, opts);
+      blocks = prepared || (window.WasmEngine && WasmEngine.generateSync(w, v, opts))
+        || S.generate(w, v, opts);
     } else {
-      // Euclidean / Smith-network tilings: exact coverage of the whole
-      // rectangle, LOD-driven ladder subdivision, arbitrary square counts.
+      // Euclidean / Smith-network tilings share the same user-defined dense
+      // centres: ladder refinements are confined to a core around each
+      // centre while the far field keeps its minimum-tile skeleton.
       var st = S.staticTiling(state.mode, w, {
-        view: v, order: +$('order').value, maxBlocks: 60000
+        view: v, order: +$('order').value, foci: state.foci, radius: opts.radius,
+        maxDepth: 22, maxBlocks: 60000
       });
       blocks = st.blocks;
       state.staticMeta = st.meta;
@@ -246,6 +270,8 @@
   /* --------------------------- Rendering --------------------------- */
   function requestRender(full) {
     state.dirty = true;
+    // An in-flight parallel frame was computed for the previous camera.
+    if (state.pending) state.genToken++;
     if (full) { state.renderQueue = null; state.snapshot = null; }
     schedule();
   }
@@ -264,8 +290,43 @@
       state.dirty = false;
       return;
     }
+    if (state.pending) return;   // a parallel frame owns the canvas; keep current pixels
+
     if (state.dirty) {
       state.dirty = false;
+      // First frame: synchronous C++/WASM so an image appears immediately.
+      // Later frames: dispatch independent quadtree regions to the worker pool.
+      var parallel = state.mode === 'quad' && !state.anim &&
+        state.blocks.length > 0 && !state.parallelDisabled &&
+        window.WasmEngine && WasmEngine.threads() > 0;
+      if (parallel) {
+        var token = ++state.genToken, pv = viewport(), po = frameOpts(false);
+        state.pending = true;
+        Promise.resolve(WasmEngine.generateAsync(state.world, pv, po)).then(function (blocks) {
+          state.pending = false;
+          if (token !== state.genToken) { schedule(); return; }
+          if (!blocks) {
+            // Native cap exceeded: render this frame with the adaptive JS
+            // generator and stay on the synchronous path afterwards.
+            state.parallelDisabled = true;
+            regenerate(null, pv, po);
+          } else {
+            regenerate(blocks, pv, po);
+          }
+          paintBackground();
+          paintRange(0, state.drawOrder.length);
+          finishPaint();
+          state.renderQueue = null;
+          if (state.dirty || state.anim) schedule();
+        }, function () {
+          state.pending = false;
+          state.genToken++;
+          state.parallelDisabled = true;
+          state.dirty = true;
+          schedule();
+        });
+        return;
+      }
       regenerate();
       paintBackground();
       // Full single-pass draw: prevents unpainted regions in any intermediate frame (relaxed time budget)
@@ -370,9 +431,11 @@
     ctx.strokeRect(a.x, a.y, b2.x - a.x, b2.y - a.y);
     ctx.restore();
 
-    if ($('showFoci').checked && state.mode === 'quad') paintFoci();
-    if (state.drag) paintSelectFrame(normDrag(state.drag));
+    // The snapshot excludes the centre markers, so dragging a marker can
+    // repaint the overlay without leaving ghost copies behind.
     saveSnapshot();
+    if ($('showFoci').checked) paintFoci();
+    if (state.drag) paintSelectFrame(normDrag(state.drag));
   }
 
   function paintFoci() {
@@ -411,7 +474,13 @@
   /** During pan/zoom: affine preview from the snapshot avoids regenerating tens of thousands of tiles every frame */
   function preview() {
     var s = state.snapshot, sv = state.snapView;
-    if (!s || !sv || state.phase !== 'result') { paintSelect(); return; }
+    if (!s || !sv || state.phase !== 'result') {
+      // While the worker pool computes the next frame there may be no
+      // snapshot; keep the existing pixels instead of clearing the canvas.
+      if (state.phase === 'result' && state.blocks.length) return;
+      paintSelect();
+      return;
+    }
     var v = state.view, ratio = v.scale / sv.scale;
     var tx = state.W / 2 - ratio * state.W / 2 + (sv.cxD - BD.toNumber(v.cx)) * v.scale;
     var ty = state.H / 2 - ratio * state.H / 2 + (sv.cyD - BD.toNumber(v.cy)) * v.scale;
@@ -474,11 +543,12 @@
   function updateHUD(ms) {
     var w = state.world, m = state.meta;
     if (!w) { emptyHUD(); return; }
+    m.ms = ms;
     $('statRatio').textContent = w.m + ':' + w.n;
     $('statBlocks').textContent = m.count.toLocaleString('en-US');
     $('statMin').textContent = fmtSide(m.min) + ' u';
     $('statMax').textContent = fmtSide(m.max) + ' u';
-    $('statCenters').textContent = state.mode === 'quad' ? String(state.foci.length) : T.t('statEmpty');
+    $('statCenters').textContent = String(state.foci.length);
     $('statCoverage').textContent = '100%';
     $('statTime').textContent = ms.toFixed(0) + ' ms';
     var line;
@@ -500,6 +570,9 @@
         count: m.count, capped: m.capped ? T.t('capped') : ''
       });
     }
+    if (state.mode === 'quad') {
+      line += ' · ' + (window.WasmEngine ? WasmEngine.status() : 'JS') + ' kernel';
+    }
     $('metaLine').textContent = line;
   }
 
@@ -508,8 +581,9 @@
     var el = $('algoHint');
     el.setAttribute('data-i18n', key);
     el.textContent = T.t(key);
-    // The subdivision order only affects the two classic tilings.
-    $('order').disabled = state.mode === 'quad';
+    // Subdivision order is meaningful in every mode: it widens the dense
+    // core / relaxes the centre pixel floor instead of being mode-specific.
+    $('order').disabled = false;
   }
 
   function hideHint() { $('stageHint').classList.add('is-hidden'); }
@@ -550,7 +624,7 @@
     var html = '<b>#' + (found + 1) + '</b> · ' + T.t('ttEdge') + ' ' + fmtSide(q.s) + ' u';
     html += '<br>' + T.t('ttArea') + ' ' + fmtSide(q.s * q.s) + ' u²';
     html += '<br>' + T.t('ttLevel') + ' ' + (q.depth || 0);
-    if (state.mode === 'quad') html += '<br><span style="opacity:.62">' + T.t('clickHint') + '</span>';
+    html += '<br><span style="opacity:.62">' + T.t('clickHint') + '</span>';
     tip.innerHTML = html;
     tip.style.left = clamp(p.x + 15, 8, state.W - 175) + 'px';
     tip.style.top = clamp(p.y + 15, 8, state.H - 100) + 'px';
@@ -642,13 +716,25 @@
     el.style.setProperty('--fill', pct.toFixed(1) + '%');
   }
   function syncCentersSlider() {
-    $('centers').value = clamp(state.foci.length, 1, 5);
+    $('centers').value = clamp(state.foci.length, 1, 6);
     $('centersVal').textContent = state.foci.length;
     setRangeFill($('centers'));
   }
 
   /* --------------------------- Events --------------------------- */
   function point(e) { return { x: e.clientX, y: e.clientY }; }
+
+  /** Index of the dense centre whose marker is within r pixels of p, or -1. */
+  function nearestFocus(p, r) {
+    if (state.phase !== 'result' || !state.world) return -1;
+    var best = r * r, hit = -1;
+    state.foci.forEach(function (f, i) {
+      var s = toScreen(f.x, f.y), dx = s.x - p.x, dy = s.y - p.y;
+      var d = dx * dx + dy * dy;
+      if (d <= best) { best = d; hit = i; }
+    });
+    return hit;
+  }
 
   function bind() {
     $('themeToggle').addEventListener('click', function () { setTheme(state.theme === 'dark' ? 'light' : 'dark'); });
@@ -677,10 +763,11 @@
         } else refreshResult();
       }, 70);
     }
-    ['centers', 'power', 'detail', 'order', 'palette', 'seed'].forEach(function (id) {
+    ['centers', 'power', 'radius', 'detail', 'order', 'palette', 'seed'].forEach(function (id) {
       $(id).addEventListener('input', function () {
         if (id === 'centers') $('centersVal').textContent = this.value;
         if (id === 'power') $('powerVal').textContent = (+this.value).toFixed(1);
+        if (id === 'radius') $('radiusVal').textContent = (+this.value).toFixed(2);
         if (id === 'detail') $('detailVal').textContent = this.value;
         if (id === 'order') $('orderVal').textContent = this.value;
         if (id === 'centers' || id === 'palette' || id === 'seed') state.cache.clear();
@@ -734,6 +821,15 @@
         return;
       }
       if (state.touches.size > 2) return;
+      // Dragging a marker repositions a dense centre in all three modes.
+      if (state.phase === 'result' && !e.shiftKey && $('showFoci').checked) {
+        var hit = nearestFocus(p, 16);
+        if (hit >= 0) {
+          state.pointer = { x0: p.x, y0: p.y, mode: 'focus', moved: false, focusIndex: hit };
+          canvas.style.cursor = 'grabbing';
+          return;
+        }
+      }
       var mode = (state.phase === 'select' || e.shiftKey) ? 'draw' : 'pan';
       state.pointer = {
         x0: p.x, y0: p.y, mode: mode, moved: false,
@@ -773,7 +869,15 @@
       }
       if (state.pointer) {
         var dx = p.x - state.pointer.x0, dy = p.y - state.pointer.y0;
-        if (state.pointer.mode === 'pan') {
+        if (state.pointer.mode === 'focus') {
+          var fw = toWorld(p.x, p.y);
+          var fc = state.foci[state.pointer.focusIndex];
+          fc.x = clamp(fw.x, 0, state.world.gw);
+          fc.y = clamp(fw.y, 0, state.world.gh);
+          state.pointer.moved = true;
+          preview();
+          paintFoci();
+        } else if (state.pointer.mode === 'pan') {
           if (!state.pointer.moved && Math.hypot(dx, dy) < 3) return;
           state.pointer.moved = true;
           var s0 = state.pointer.startView;
@@ -799,7 +903,10 @@
         return;
       }
       if (!state.pointer) return;
-      if (state.pointer.mode === 'pan') {
+      if (state.pointer.mode === 'focus') {
+        canvas.style.cursor = 'grab';
+        if (state.pointer.moved) { state.cache.clear(); refreshResult(); }
+      } else if (state.pointer.mode === 'pan') {
         canvas.style.cursor = 'grab';
         if (state.pointer.moved) requestRender(true);
       } else {
@@ -842,19 +949,22 @@
     }, { passive: false });
 
     canvas.addEventListener('dblclick', function (e) {
-      if (state.phase !== 'result' || state.mode !== 'quad') return;
+      if (state.phase !== 'result') return;
       var p = point(e), w = toWorld(p.x, p.y);
       if (state.foci.length >= 6) { toast(T.t('focusMax')); return; }
       state.foci.push({ x: clamp(w.x, 0, state.world.gw), y: clamp(w.y, 0, state.world.gh) });
       syncCentersSlider();
+      state.cache.clear();
       refreshResult();
       toast(T.t('focusAdded'));
     });
     canvas.addEventListener('contextmenu', function (e) {
       e.preventDefault();
-      if (state.phase !== 'result' || state.mode !== 'quad' || state.foci.length <= 1) return;
-      state.foci.pop();
+      if (state.phase !== 'result' || state.foci.length <= 1) return;
+      var hit = nearestFocus(point(e), 1e9);
+      state.foci.splice(hit < 0 ? state.foci.length - 1 : hit, 1);
       syncCentersSlider();
+      state.cache.clear();
       refreshResult();
       toast(T.t('focusRemoved'));
     });
@@ -875,6 +985,11 @@
       } else if (e.key === '-') {
         zoomBy(1 / 1.6); preview(); requestRender(true);
       }
+    });
+
+    // Worker readiness arrives after the first frame; refresh the HUD badge.
+    document.addEventListener('wasm:ready', function () {
+      updateHUD(state.meta.ms || 0);
     });
 
     document.addEventListener('i18n:change', function () {
@@ -911,8 +1026,9 @@
     $('statPrecision').textContent = T.t('precisionValue');
     $('langZh').classList.toggle('is-active', state.lang === 'zh');
     $('langEn').classList.toggle('is-active', state.lang === 'en');
-    ['centers', 'power', 'detail', 'order'].forEach(function (id) { setRangeFill($(id)); });
+    ['centers', 'power', 'radius', 'detail', 'order'].forEach(function (id) { setRangeFill($(id)); });
     $('powerVal').textContent = (+$('power').value).toFixed(1);
+    $('radiusVal').textContent = (+$('radius').value).toFixed(2);
     $('centersVal').textContent = $('centers').value;
     $('detailVal').textContent = $('detail').value;
     $('orderVal').textContent = $('order').value;
@@ -935,6 +1051,7 @@
       if (q.get('mode')) $('algoMode').value = q.get('mode');
       if (q.get('centers')) { $('centers').value = q.get('centers'); $('centersVal').textContent = q.get('centers'); setRangeFill($('centers')); }
       if (q.get('order')) { $('order').value = q.get('order'); $('orderVal').textContent = q.get('order'); setRangeFill($('order')); }
+      if (q.get('radius')) { $('radius').value = q.get('radius'); $('radiusVal').textContent = (+q.get('radius')).toFixed(2); setRangeFill($('radius')); }
       if (q.get('palette')) $('palette').value = q.get('palette');
       $('animate').checked = false;
       // A tall phone viewport is best served by a portrait-oriented world;
@@ -959,6 +1076,47 @@
       if (q.get('console') === '1') toggleConsole(true);
       if (q.get('modal')) openModal();
     }
+
+    /* Desktop installation: Chromium exposes beforeinstallprompt once the
+       manifest, icons and secure origin checks pass. Other browsers install
+       from their own menu; the button simply stays hidden there. */
+    (function () {
+      var btn = $('btnInstall'), deferred = null;
+      if ('serviceWorker' in navigator &&
+          (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
+      }
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferred = e;
+        btn.hidden = false;
+      });
+      btn.addEventListener('click', function () {
+        if (!deferred) return;
+        var prompt = deferred; deferred = null;
+        prompt.prompt();
+        if (prompt.userChoice) {
+          prompt.userChoice.then(function (r) {
+            btn.hidden = true;
+            if (r && r.outcome === 'accepted') toast(T.t('installDone'));
+          });
+        } else { btn.hidden = true; }
+      });
+      window.addEventListener('appinstalled', function () {
+        btn.hidden = true; deferred = null; toast(T.t('installDone'));
+      });
+      // Optional experimental path: the service worker injects COOP/COEP,
+      // which enables SharedArrayBuffer after a single reload.
+      if (q.get('coi') === '1' && !window.crossOriginIsolated &&
+          'serviceWorker' in navigator && window.sessionStorage) {
+        try {
+          if (!sessionStorage.getItem('sqr.coi-reload')) {
+            sessionStorage.setItem('sqr.coi-reload', '1');
+            navigator.serviceWorker.ready.then(function () { location.reload(); });
+          }
+        } catch (e) { /* session storage may be disabled */ }
+      }
+    })();
   }
 
   init();
