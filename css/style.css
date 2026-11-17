@@ -388,3 +388,8 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Perfect-dissection mode: the density-field / LOD parameters are meaningless
+   for a finite perfect tiling, so hide them and surface the instance picker. */
+body.mode-perfect [data-pmode-hide] { display: none !important; }
+#perfectPickField[hidden] { display: none; }

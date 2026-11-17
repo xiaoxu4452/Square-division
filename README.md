@@ -162,6 +162,7 @@ Square-division/
 ├── js/
 │   ├── i18n.js           # Chinese / English dictionaries and DOM text binding
 │   ├── bigdec.js         # BigInt fixed-point decimals (80 fractional digits)
+│   ├── perfect-data.js   # 9 audited perfect dissections (Bouwkampcode, precomputed)
 │   ├── squaring.js       # Dissection engine, adjacency graph, colouring, validation
 │   ├── wasm-module.js    # Generated: base64-inlined C++/WASM binary (offline workers)
 │   ├── wasm-engine.js    # Task splitter, worker pool, synchronous first frame, fallbacks
@@ -205,7 +206,7 @@ The camera is finite even though the zoom is not: the viewport can never be drag
 
 | Parameter | Meaning |
 | --- | --- |
-| Dissection algorithm | Quadtree field / Euclidean / Moroń network |
+| Dissection algorithm | Quadtree field / Euclidean / Moroń network / Perfect (distinct sides) |
 | Dense centres | Number of foci, 1–6 |
 | Dense-centre radius | Influence radius as a fraction of `min(W,H)` (0.20–1.20) |
 | Focus strength | Exponent `power` of the size field |
@@ -216,6 +217,17 @@ The camera is finite even though the zoom is not: the viewport can never be drag
 | Ratio presets | `1:1`, `3:2`, `16:9`, golden ratio, `2:3`, … |
 | Display options | Grid, animation, side labels, focus markers |
 
+**Perfect dissection mode**: selecting "Perfect dissection · distinct sides" reveals an instance picker. This is a mathematically genuine perfect squared rectangle/square: finitely many squares tile the frame exactly, with **all side lengths pairwise distinct**. The data is not searched at runtime — it is decoded from Bouwkampcodes in the authoritative squaring.net catalogues and audited tile by tile (exact area, zero gaps/overlaps, distinct integer sides). Available instances (`?perfect=` value):
+
+| key | dissection | order |
+| --- | --- | --- |
+| `duv112` | 112×112 Duijvestijn perfect square (unique lowest-order solution) | 21 |
+| `mor32` | 33×32 Moroń smallest perfect rectangle | 9 |
+| `2to1` | 208×103 near-2:1 wide perfect rectangle | 15 |
+| `57x55` / `69x61` / `115x94` / `65x47` / `112x81` / `130x79` | classic perfect rectangles across aspect ratios | 9–11 |
+
+This mode has a finite number of squares (9–21); the camera still zooms and pans, while the density-field parameters do not apply and are hidden automatically.
+
 Theme and language are persisted in `localStorage`.
 
 ### URL parameters
@@ -225,7 +237,8 @@ Useful for sharing a state or for automated screenshots:
 | Key | Example | Effect |
 | --- | --- | --- |
 | `demo` | `demo=1` | Generate a finished tiling immediately |
-| `mode` | `mode=quad\|euclid\|network` | Dissection algorithm |
+| `mode` | `mode=quad\|euclid\|network\|perfect` | Dissection algorithm |
+| `perfect` | `perfect=duv112` | Perfect dissection instance (see below) |
 | `centers` | `centers=3` | Number of dense centres |
 | `ratio` | `ratio=1.5` | Rectangle aspect ratio |
 | `zoom` | `zoom=2000000` | Zoom multiplier centred on the first focus |

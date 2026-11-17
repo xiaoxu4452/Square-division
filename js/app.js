@@ -29,7 +29,7 @@
     theme: 'dark', lang: 'zh', W: 1, H: 1, dpr: 1,
     phase: 'select', rectN: null, drag: null, pointer: null,
     view: { cx: BD.from(0), cy: BD.from(0), cxHi: 0, cyHi: 0, offX: 0, offY: 0, scale: 1, fitScale: 1 },
-    world: null, mode: 'quad', foci: [],
+    world: null, mode: 'quad', foci: [], perfectKey: 'duv112',
     staticBlocks: null, staticMeta: null,
     cache: new Map(), blocks: [], colors: [], drawOrder: [], meta: {},
     paint: {}, snapshot: null, snapView: null,
@@ -209,20 +209,63 @@
     $('zoomLabel').textContent = txt;
   }
 
+  /* ---------------------------- Perfect dissections ---------------------------- */
+  /** Populate the perfect-tiling instance picker once at startup. */
+  function fillPerfectPicker() {
+    var sel = $('perfectPick');
+    if (!sel || !window.PerfectData) return;
+    var list = PerfectData.all().slice().sort(function (a, b) {
+      return b.order - a.order || a.w * a.h - b.w * b.h;
+    });
+    sel.innerHTML = list.map(function (t) {
+      var label = state.lang === 'en' ? t.en : t.zh;
+      return '<option value="' + t.key + '">' + label + ' · ' + t.order + ' 阶 · ' + t.w + '×' + t.h + '</option>';
+    }).join('');
+    sel.value = state.perfectKey;
+    updatePerfectNote();
+  }
+
+  function updatePerfectNote() {
+    var t = window.PerfectData && PerfectData.byKey(state.perfectKey);
+    if (!t) return;
+    $('perfectNote').textContent = (state.lang === 'en' ? t.noteEn : t.noteZh) +
+      ' · ' + t.w + '×' + t.h;
+  }
+
+  /** A world whose outer rectangle is EXACTLY the tiling's integer w×h. */
+  function perfectWorld(t) {
+    return {
+      gw: t.w, gh: t.h, m: t.w, n: t.h, L: 1, depth: 0,
+      ratio: t.w / t.h, srcRatio: t.w / t.h, perfect: true
+    };
+  }
+
   /* ---------------------------- Compute ---------------------------- */
   function runCompute(o) {
     o = o || {};
+    state.mode = $('algoMode').value;
     var ratio = o.ratio;
     if (!ratio && state.rectN) ratio = state.rectN.w / state.rectN.h;
-    if (!ratio) { toast(T.t('emptyWarn')); return; }
+    // Perfect dissections derive their outer frame from the instance, so they
+    // need neither a drawn rectangle nor a ratio preset.
+    if (!ratio && state.mode !== 'perfect') { toast(T.t('emptyWarn')); return; }
 
     var oldWorld = state.world;
-    var world = S.buildWorld(ratio, { depth: +$('detail').value, rows: 12 });
+    var world;
+    if (state.mode === 'perfect') {
+      var pt = window.PerfectData && (PerfectData.byKey(state.perfectKey) || PerfectData.all()[0]);
+      if (!pt) { toast(T.t('emptyWarn')); return; }
+      state.perfectKey = pt.key;
+      world = perfectWorld(pt);
+    } else {
+      world = S.buildWorld(ratio, { depth: +$('detail').value, rows: 12 });
+    }
     state.world = world;
-    state.mode = $('algoMode').value;
     // User-placed dense centres survive a mode switch or a redrawn rectangle;
     // they are rescaled into the new world instead of being reset.
-    if (o.keepFoci !== false && oldWorld && state.foci.length && state.phase === 'result') {
+    if (state.mode === 'perfect') {
+      state.foci = [];
+    } else if (o.keepFoci !== false && oldWorld && state.foci.length && state.phase === 'result' && !oldWorld.perfect) {
       state.foci = state.foci.map(function (f) {
         return {
           x: clamp(f.x / oldWorld.gw * world.gw, 0, world.gw),
@@ -286,7 +329,13 @@
     // The first frame uses the synchronous C++/WASM kernel; later frames are
     // computed by the worker pool and passed in as `prepared`.
     var blocks;
-    if (state.mode === 'quad') {
+    if (state.mode === 'perfect') {
+      // A finite perfect dissection: the audited tiling is returned whole and
+      // clipped by the viewport during paint (at most 21 squares — no LOD/worker).
+      var pf = S.perfectTiling(state.perfectKey, v);
+      blocks = pf.blocks;
+      state.staticMeta = pf.meta;
+    } else if (state.mode === 'quad') {
       blocks = prepared || (window.WasmEngine && WasmEngine.generateSync(w, v, opts))
         || S.generate(w, v, opts);
     } else {
@@ -611,7 +660,11 @@
     $('statCoverage').textContent = '100%';
     $('statTime').textContent = ms.toFixed(0) + ' ms';
     var line;
-    if (state.mode === 'euclid' && state.staticMeta) {
+    if (state.mode === 'perfect' && state.staticMeta) {
+      var pm = state.staticMeta;
+      var pname = state.lang === 'en' ? pm.en : pm.zh;
+      line = T.t('metaPerfect', { name: pname, order: pm.order, count: m.count });
+    } else if (state.mode === 'euclid' && state.staticMeta) {
       line = T.t('metaEuclid', {
         cf: state.staticMeta.cf.join(', '), steps: state.staticMeta.cf.length,
         count: m.count.toLocaleString('en-US'), order: state.staticMeta.order
@@ -640,9 +693,13 @@
     var el = $('algoHint');
     el.setAttribute('data-i18n', key);
     el.textContent = T.t(key);
-    // Subdivision order is meaningful in every mode: it widens the dense
-    // core / relaxes the centre pixel floor instead of being mode-specific.
-    $('order').disabled = false;
+    var perfect = state.mode === 'perfect';
+    document.body.classList.toggle('mode-perfect', perfect);
+    $('perfectPickField').hidden = !perfect;
+    if (perfect) {
+      updatePerfectNote();
+      if ($('showLabels')) $('showLabels').checked = true;
+    }
   }
 
   function hideHint() { $('stageHint').classList.add('is-hidden'); }
@@ -822,8 +879,16 @@
       if (this.value === 'network') $('showLabels').checked = true;
       state.mode = this.value;
       updateAlgoHint();
-      if (state.phase === 'result' && state.world) runCompute({ ratio: state.world.srcRatio });
+      if (state.phase === 'result' && state.world && !state.world.perfect) runCompute({ ratio: state.world.srcRatio });
+      else if (state.mode === 'perfect') runCompute();
       else $('btnCompute').classList.add('pulse');
+    });
+
+    $('perfectPick').addEventListener('change', function () {
+      state.perfectKey = this.value;
+      state.cache.clear();
+      updatePerfectNote();
+      if (state.phase === 'result') runCompute();
     });
 
     var reparamTimer = 0;
@@ -1072,6 +1137,7 @@
 
     document.addEventListener('i18n:change', function () {
       $('statPrecision').textContent = T.t('precisionValue');
+      fillPerfectPicker();
       updateAlgoHint();
       updateHUD(0);
       if (state.drag) paintSelectFrame(normDrag(state.drag));
@@ -1101,6 +1167,7 @@
     document.documentElement.dataset.theme = state.theme;
     state.lang = readStore('sqr.lang', 'zh') === 'en' ? 'en' : 'zh';
     T.setLang(state.lang);
+    fillPerfectPicker();
     $('statPrecision').textContent = T.t('precisionValue');
     $('langZh').classList.toggle('is-active', state.lang === 'zh');
     $('langEn').classList.toggle('is-active', state.lang === 'en');
@@ -1127,6 +1194,10 @@
       if (q.get('theme')) setTheme(q.get('theme') === 'light' ? 'light' : 'dark');
       if (q.get('lang')) setLang(q.get('lang') === 'en' ? 'en' : 'zh');
       if (q.get('mode')) $('algoMode').value = q.get('mode');
+      if (q.get('perfect')) {
+        var pk = PerfectData.byKey(q.get('perfect')) ? q.get('perfect') : 'duv112';
+        state.perfectKey = pk; $('perfectPick').value = pk; updatePerfectNote();
+      }
       if (q.get('centers')) { $('centers').value = q.get('centers'); $('centersVal').textContent = q.get('centers'); setRangeFill($('centers')); }
       if (q.get('order')) { $('order').value = q.get('order'); $('orderVal').textContent = q.get('order'); setRangeFill($('order')); }
       if (q.get('radius')) { $('radius').value = q.get('radius'); $('radiusVal').textContent = (+q.get('radius')).toFixed(2); setRangeFill($('radius')); }

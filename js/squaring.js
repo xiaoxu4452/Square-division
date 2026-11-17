@@ -636,6 +636,35 @@
     return result;
   }
 
+  /* ------------------------------------------------- Perfect dissections (PSR/PSS) */
+  /**
+   * Perfect squared rectangle / square: a FINITE tiling whose square sides are
+   * all pairwise distinct. Coordinates come precomputed and independently
+   * audited from js/perfect-data.js (Bouwkampcodes from squaring.net), so there
+   * is no runtime search and no LOD: the whole tiling is returned at once and
+   * the viewport clips it during paint. Blocks are expressed in viewport-local
+   * coordinates (world - view centre), matching generate()/staticTiling().
+   * @param key  tiling key from PerfectData (default 'duv112')
+   * @param view {ox,oy} viewport centre in world units
+   */
+  function perfectTiling(key, view) {
+    var PD = (typeof globalThis !== 'undefined' ? globalThis : window).PerfectData;
+    if (!PD) return null;
+    var t = PD.byKey(key) || PD.all()[0];
+    if (!t) return null;
+    var ox = view ? (view.ox || 0) : 0, oy = view ? (view.oy || 0) : 0;
+    var out = PD.blocks(t);
+    for (var i = 0; i < out.length; i++) { out[i].x -= ox; out[i].y -= oy; }
+    out.ox = ox; out.oy = oy;
+    return {
+      blocks: out,
+      meta: {
+        key: t.key, id: t.id, w: t.w, h: t.h, order: t.order,
+        zh: t.zh, en: t.en, noteZh: t.noteZh, noteEn: t.noteEn
+      }
+    };
+  }
+
   /* ------------------------------------------------------------ Validation */
   /** Exact sweep-line validation: area conservation + every column fully tiled without overlap (for Node tests) */
   function validate(blocks, world) {
@@ -685,6 +714,7 @@
     palette: palette,
     colorize: colorize,
     staticTiling: staticTiling,
+    perfectTiling: perfectTiling,
     validate: validate,
     mulberry32: mulberry32,
     hashGrid: hashGrid,

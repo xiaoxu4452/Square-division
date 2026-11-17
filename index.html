@@ -80,28 +80,35 @@
           <option value="quad" data-i18n="algoQuad"></option>
           <option value="euclid" data-i18n="algoEuclid"></option>
           <option value="network" data-i18n="algoNetwork"></option>
+          <option value="perfect" data-i18n="algoPerfect"></option>
         </select>
         <p class="hint-line" id="algoHint" data-i18n="algoHintQuad"></p>
       </div>
 
-      <div class="field">
+      <div class="field" id="perfectPickField" hidden>
+        <label for="perfectPick" data-i18n="perfectPickLabel"></label>
+        <select id="perfectPick"></select>
+        <p class="hint-line" id="perfectNote"></p>
+      </div>
+
+      <div class="field" data-pmode-hide>
         <div class="field-row"><label for="centers" data-i18n="centersLabel"></label><output id="centersVal">2</output></div>
         <input type="range" id="centers" min="1" max="6" step="1" value="2">
       </div>
-      <div class="field">
+      <div class="field" data-pmode-hide>
         <div class="field-row"><label for="power" data-i18n="powerLabel"></label><output id="powerVal">2.6</output></div>
         <input type="range" id="power" min="1" max="5" step="0.1" value="2.6">
       </div>
-      <div class="field">
+      <div class="field" data-pmode-hide>
         <div class="field-row"><label for="radius" data-i18n="radiusLabel"></label><output id="radiusVal">0.62</output></div>
         <input type="range" id="radius" min="0.2" max="1.2" step="0.02" value="0.62">
       </div>
-      <div class="field">
+      <div class="field" data-pmode-hide>
         <div class="field-row"><label for="detail" data-i18n="detailLabel"></label><output id="detailVal">8</output></div>
         <input type="range" id="detail" min="5" max="11" step="1" value="8">
       </div>
 
-      <div class="field">
+      <div class="field" data-pmode-hide>
         <div class="field-row"><label for="order" data-i18n="orderLabel"></label><output id="orderVal">2</output></div>
         <input type="range" id="order" min="0" max="6" step="1" value="2">
       </div>
@@ -124,7 +131,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" data-pmode-hide>
         <span class="group-label" data-i18n="ratioLabel"></span>
         <div class="chips" id="ratioChips">
           <button type="button" data-ratio="1" data-i18n="ratioSquare"></button>
@@ -139,9 +146,9 @@
         <span class="group-label" data-i18n="optionsLabel"></span>
         <div class="checks">
           <label class="check"><input type="checkbox" id="showGrid" checked><span data-i18n="optGrid"></span></label>
-          <label class="check"><input type="checkbox" id="animate" checked><span data-i18n="optAnimate"></span></label>
+          <label class="check" data-pmode-hide><input type="checkbox" id="animate" checked><span data-i18n="optAnimate"></span></label>
           <label class="check"><input type="checkbox" id="showLabels"><span data-i18n="optLabels"></span></label>
-          <label class="check"><input type="checkbox" id="showFoci" checked><span data-i18n="optFoci"></span></label>
+          <label class="check" data-pmode-hide><input type="checkbox" id="showFoci" checked><span data-i18n="optFoci"></span></label>
         </div>
       </div>
 
@@ -218,6 +225,7 @@
 
   <script src="js/i18n.js"></script>
   <script src="js/bigdec.js"></script>
+  <script src="js/perfect-data.js"></script>
   <script src="js/squaring.js"></script>
   <script src="js/wasm-module.js"></script>
   <script src="js/wasm-engine.js"></script>

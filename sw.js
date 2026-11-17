@@ -10,12 +10,12 @@
  */
 'use strict';
 
-const VERSION = 'sqr-v5';
+const VERSION = 'sqr-v6';
 const CACHE = VERSION + '-static';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
   './css/style.css',
-  './js/i18n.js', './js/bigdec.js', './js/squaring.js',
+  './js/i18n.js', './js/bigdec.js', './js/perfect-data.js', './js/squaring.js',
   './js/wasm-module.js', './js/wasm-engine.js',
   './js/tiling-worker.js', './js/app.js',
   './essay.zh.html', './essay.en.html',

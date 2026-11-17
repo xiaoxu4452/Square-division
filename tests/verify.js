@@ -11,6 +11,7 @@
 
 const S = require('../js/squaring.js');
 const BD = require('../js/bigdec.js');
+globalThis.PerfectData = require('../js/perfect-data.js');
 
 let fail = 0;
 const ok = (name, cond, extra) => {
@@ -257,6 +258,53 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
       !!ca && !!cb && cb.x - ca.x > w.gw * 0.1 && cb.y - ca.y > w.gh * 0.05,
       ca && cb ? 'dx=' + (cb.x - ca.x).toFixed(0) + ' dy=' + (cb.y - ca.y).toFixed(0) : 'no fine tiles');
   }
+}
+
+/* --------------------- Perfect dissections (PSR/PSS) --------------------- */
+{
+  const P = globalThis.PerfectData;
+  let allAudit = true, allCover = true, allDistinct = true;
+  const views = [{ ox: 0, oy: 0 }, { ox: 17.5, oy: -9.25 }]; // local-coordinate offset must not affect world coverage
+  for (const t of P.all()) {
+    const a = P.audit(t);
+    if (!a.ok) allAudit = false;
+    if (!a.distinct || a.uniqueSides !== t.order) allDistinct = false;
+    for (const view of views) {
+      const pf = S.perfectTiling(t.key, view);
+      if (!pf) { allCover = false; break; }
+      const v = S.validate(pf.blocks, { gw: t.w, gh: t.h });
+      if (!v.ok || v.gaps !== 0 || v.overlaps !== 0) allCover = false;
+      // local coords must be world coords minus the viewport centre
+      if (!pf.blocks.every(b => b.x === b.wx - view.ox && b.y === b.wy - view.oy)) allCover = false;
+    }
+  }
+  ok('all perfect tilings pass structural audit', allAudit,
+    'instances=' + P.all().length);
+  ok('perfect tilings have pairwise-distinct integer sides', allDistinct,
+    'every instance: order distinct sides');
+  ok('perfect tilings tile exactly under any viewport offset', allCover,
+    'area=100% gaps=0 overlaps=0');
+
+  const duv = P.byKey('duv112');
+  ok('Duijvestijn 112² is the unique order-21 perfect square',
+    !!duv && duv.order === 21 && duv.w === 112 && duv.h === 112 &&
+    duv.cells.length / 3 === 21);
+  const sides = [];
+  for (let i = 2; i < duv.cells.length; i += 3) sides.push(duv.cells[i]);
+  ok('Duijvestijn side set matches the published Bouwkampcode',
+    sides.slice().sort((a, b) => a - b).join(',') ===
+    '2,4,6,7,8,9,11,15,16,17,18,19,24,25,27,29,33,35,37,42,50');
+
+  // Adjacent-different colouring must hold on a perfect tiling too.
+  const pf = S.perfectTiling('duv112', { ox: 0, oy: 0 });
+  const colors = S.colorize(pf.blocks, null, { palette: 'spectrum', theme: 'dark', seed: 7 });
+  const g = S.buildAdjacency(pf.blocks);
+  let same = 0;
+  for (let i = 0; i < g.adj.length; i++) for (const j of g.adj[i]) {
+    if (j > i && colors[i].k === colors[j].k) same++;
+  }
+  ok('perfect tiling colouring keeps adjacent squares different', same === 0,
+    'edges=' + g.adj.reduce((a, x) => a + x.length, 0) / 2 + ' same=' + same);
 }
 
 /* --------------------- C++ / WebAssembly kernel --------------------- */
