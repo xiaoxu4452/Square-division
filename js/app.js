@@ -232,7 +232,17 @@
     });
     sel.innerHTML = list.map(function (t) {
       var label = state.lang === 'en' ? t.en : t.zh;
-      return '<option value="' + t.key + '">' + label + ' · ' + t.order + ' 阶 · ' + t.w + '×' + t.h + '</option>';
+      // Some labels already state the order (e.g. "Compound perfect square,
+      // order 41 (A)"); only append the unit-labelled order when it is new.
+      var orderUnit = T.t('orderUnit');
+      var hasOrder = label.indexOf(t.order + ' ' + orderUnit) >= 0 ||
+                     label.indexOf(orderUnit + ' ' + t.order) >= 0;
+      var orderTxt = state.lang === 'en'
+        ? orderUnit + ' ' + t.order
+        : t.order + ' ' + orderUnit;
+      return '<option value="' + t.key + '">' + label +
+             (hasOrder ? '' : ' · ' + orderTxt) +
+             ' · ' + t.w + '×' + t.h + '</option>';
     }).join('');
     sel.value = state.perfectKey;
     updatePerfectNote();
@@ -1158,12 +1168,22 @@
     });
 
     /* ---- Perfect search: custom rectangle -> WASM worker pool ---------- */
+    /** "12 squares" / "12 块" with the unit on the correct side per language. */
+    function countLabel(n, kind) {
+      var unit = T.t(kind === 'order' ? 'orderUnit' : 'blocksUnit');
+      return state.lang === 'en' ? unit + ' ' + n : n + ' ' + unit;
+    }
+    function solutionSummary(s) {
+      return s.w + '×' + s.h + ' · ' + countLabel(s.order, 'blocks') +
+             ' · ' + s.sides.join(', ') + ' · ' + T.t('statCoverage') + ' 100%';
+    }
     function fillSolutionPicker() {
       var sel = $('perfectSolutions');
       if (!sel) return;
       sel.innerHTML = state.searchedSolutions.map(function (s, i) {
         return '<option value="' + i + '">#' + (i + 1) + ' · ' + s.w + '×' + s.h +
-               ' · ' + s.order + ' 阶' + (s.sides.length ? ' · ' + s.sides[0] + '…' : '') + '</option>';
+               ' · ' + countLabel(s.order, 'order') +
+               (s.sides.length ? ' · ' + s.sides[0] + '…' : '') + '</option>';
       }).join('');
       sel.value = String(Math.max(0, state.selectedSolution));
     }
@@ -1197,8 +1217,7 @@
               trunc: st.truncated ? T.t('perfectSearchTrunc') : ''
             });
             var s = r.solutions[0];
-            $('solutionNote').textContent = s.w + '×' + s.h + ' · ' + s.order +
-              ' 块 · ' + s.sides.join(', ') + ' · ' + T.t('statCoverage') + ' 100%';
+            $('solutionNote').textContent = solutionSummary(s);
             runCompute();
           } else {
             $('perfectSolutionsField').hidden = true;
@@ -1224,8 +1243,7 @@
     if ($('perfectSolutions')) $('perfectSolutions').addEventListener('change', function () {
       state.selectedSolution = +this.value;
       var s = state.searchedSolutions[state.selectedSolution];
-      if (s) $('solutionNote').textContent = s.w + '×' + s.h + ' · ' + s.order +
-        ' 块 · ' + s.sides.join(', ') + ' · ' + T.t('statCoverage') + ' 100%';
+      if (s) $('solutionNote').textContent = solutionSummary(s);
       state.cache.clear();
       if (state.phase === 'result') runCompute();
     });
@@ -1487,6 +1505,12 @@
     document.addEventListener('i18n:change', function () {
       $('statPrecision').textContent = T.t('precisionValue');
       fillPerfectPicker();
+      // Searched-solution labels carry units too; rebuild them in the new language.
+      if (state.searchedSolutions.length) {
+        fillSolutionPicker();
+        var s = state.searchedSolutions[state.selectedSolution];
+        if (s) $('solutionNote').textContent = solutionSummary(s);
+      }
       updateAlgoHint();
       updateHUD(0);
       if (state.drag) paintSelectFrame(normDrag(state.drag));

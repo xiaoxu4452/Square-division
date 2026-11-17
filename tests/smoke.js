@@ -145,6 +145,13 @@ async function cdp(url) {
   const blocks2 = await evaluate('document.getElementById("statBlocks").textContent');
   ok('substitution level 2 renders 81 squares', blocks2 === '81', 'blocks=' + blocks2);
 
+  // English mode: dropdown labels must not leak Chinese units ("阶"/"块").
+  await goto(base + '?demo=1&lang=en&mode=perfect');
+  await sleep(500);
+  const optText = await evaluate(`[...document.querySelectorAll('select option')].map(o=>o.textContent).join(' | ')`);
+  ok('English dropdowns have no Chinese units',
+    !/[\u4e00-\u9fa5]/.test(optText), optText.slice(0, 90));
+
   // Console header drag moves the panel; default dock restored on dblclick.
   await goto(base + '?demo=1&lang=zh');
   const before = await evaluate('document.getElementById("console").getBoundingClientRect().left');

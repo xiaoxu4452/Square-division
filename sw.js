@@ -10,17 +10,17 @@
  */
 'use strict';
 
-const VERSION = 'sqr-v12';
+const VERSION = 'sqr-v13';
 const CACHE = VERSION + '-static';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
-  './css/style.css?v=12',
-  './js/i18n.js?v=12', './js/bigdec.js?v=12',
-  './js/vendor/fraction.min.js?v=12', './js/vendor/decimal.min.js?v=12',
-  './js/perfect-catalog.js?v=12', './js/perfect-data.js?v=12', './js/perfect-match.js?v=12',
-  './js/squaring.js?v=12',
-  './js/wasm-module.js?v=12', './js/wasm-engine.js?v=12', './js/perfect-solver.js?v=12',
-  './js/tiling-worker.js', './js/tiling-worker.js?v=12', './js/app.js?v=12',
+  './css/style.css?v=13',
+  './js/i18n.js?v=13', './js/bigdec.js?v=13',
+  './js/vendor/fraction.min.js?v=13', './js/vendor/decimal.min.js?v=13',
+  './js/perfect-catalog.js?v=13', './js/perfect-data.js?v=13', './js/perfect-match.js?v=13',
+  './js/squaring.js?v=13',
+  './js/wasm-module.js?v=13', './js/wasm-engine.js?v=13', './js/perfect-solver.js?v=13',
+  './js/tiling-worker.js', './js/tiling-worker.js?v=13', './js/app.js?v=13',
   './essay.zh.html', './essay.en.html',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
   './wasm/tiling_core.wasm'
