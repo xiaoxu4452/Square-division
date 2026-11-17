@@ -31,6 +31,7 @@
     view: { cx: BD.from(0), cy: BD.from(0), cxHi: 0, cyHi: 0, offX: 0, offY: 0, scale: 1, fitScale: 1 },
     world: null, mode: 'quad', foci: [], perfectKey: 'duv112', perfectLevel: 0,
     perfectMatch: null, perfectSource: null, perfectDrawnRatio: 0,
+    searchedSolutions: [], selectedSolution: -1, searchStats: null, searchBusy: false,
     staticBlocks: null, staticMeta: null,
     cache: new Map(), blocks: [], colors: [], drawOrder: [], meta: {},
     paint: {}, snapshot: null, snapView: null,
@@ -273,6 +274,20 @@
     var oldWorld = state.world;
     var world;
     if (state.mode === 'perfect') {
+      // A searched solution keeps its own frame; do not overwrite it with a
+      // catalogue match just because a rectangle was drawn earlier.
+      if (state.selectedSolution >= 0 && state.searchedSolutions.length) {
+        var sel = state.searchedSolutions[state.selectedSolution];
+        world = perfectWorld(sel.w, sel.h);
+        state.world = world;
+        state.foci = [];
+        state.cache.clear();
+        state.staticBlocks = null; state.staticMeta = null;
+        state.phase = 'result'; state.hover = -1; state.hoverRect = null;
+        state.snapshot = null; state.renderQueue = null;
+        fitView(); hideHint(); updateAlgoHint(); requestRender(true);
+        return;
+      }
       state.perfectMatch = null;
       state.perfectSource = null;
       var auto = $('matchRatio') && $('matchRatio').checked && ratio;
@@ -377,12 +392,46 @@
     // computed by the worker pool and passed in as `prepared`.
     var blocks;
     if (state.mode === 'perfect') {
+      var pf = null;
+      // A searched solution can be expanded into an unbounded family with
+      // exact BigInt arithmetic (integer scale x self-substitution).
+      if (state.selectedSolution >= 0 && window.PerfectSolver) {
+        var sol = state.searchedSolutions[state.selectedSolution];
+        if (sol) {
+          var fam = PerfectSolver.infiniteFamily(sol,
+            +$('chainLevel').value, +$('scaleK').value);
+          var cells = PerfectSolver.toFloatCells(fam);
+          pf = S.tilingFromCells(cells, Number(fam.w), Number(fam.h), v, {
+            source: 'search', order: cells.length / 3,
+            levels: fam.levels, frame: fam.w.toString(),
+            zh: 'WASM 搜索 ' + sol.w + '×' + sol.h, en: 'WASM search ' + sol.w + '×' + sol.h
+          });
+        }
+      }
       // A ratio-matched catalogue tiling carries already-decoded exact cells;
       // curated instances keep the audited data and optional substitution.
-      var pf = state.perfectSource
-        ? S.tilingFromCells(state.perfectSource.cells, state.perfectSource.w,
-                            state.perfectSource.h, v, state.perfectSource.meta)
-        : S.substitutedTiling(state.perfectKey, state.perfectLevel, v);
+      if (!pf && state.perfectSource) {
+        pf = S.tilingFromCells(state.perfectSource.cells, state.perfectSource.w,
+                               state.perfectSource.h, v, state.perfectSource.meta);
+      }
+      // Curated square instances use the same BigInt chain as searched ones,
+      // so both share one unbounded substitution control.
+      if (!pf && $('chainLevel') && +$('chainLevel').value > 0 &&
+          window.PerfectData && window.PerfectSolver) {
+        var ct = PerfectData.byKey(state.perfectKey);
+        if (ct && ct.w === ct.h) {
+          var cfam = PerfectSolver.infiniteFamily(
+            { cells: ct.cells.slice(), w: ct.w, h: ct.h, order: ct.order },
+            +$('chainLevel').value, +$('scaleK').value);
+          var ccells = PerfectSolver.toFloatCells(cfam);
+          pf = S.tilingFromCells(ccells, Number(cfam.w), Number(cfam.h), v, {
+            source: 'search', order: ccells.length / 3, levels: cfam.levels,
+            frame: cfam.w.toString(),
+            zh: (state.lang === 'en' ? ct.en : ct.zh), en: ct.en
+          });
+        }
+      }
+      if (!pf) pf = S.substitutedTiling(state.perfectKey, state.perfectLevel, v);
       if (!pf) pf = S.perfectTiling(state.perfectKey, v);
       blocks = pf.blocks;
       state.staticMeta = pf.meta;
@@ -725,6 +774,12 @@
           ratio: mr.ratio.text, wh: mr.record.w + '×' + mr.record.h,
           err: mr.errorPercent.toFixed(3), count: mr.record.order
         });
+      } else if (pm.source === 'search') {
+        var frameW = state.selectedSolution >= 0 ? state.searchedSolutions[state.selectedSolution].w : pm.w;
+        var frameH = state.selectedSolution >= 0 ? state.searchedSolutions[state.selectedSolution].h : pm.h;
+        line = T.t('metaPerfectSearched', {
+          w: frameW, h: frameH, order: pm.order, count: m.count, levels: pm.levels || 0
+        });
       } else {
         var pname = state.lang === 'en' ? pm.en : pm.zh;
         line = T.t('metaPerfect', { name: pname, order: pm.order, count: m.count, levels: pm.levels || 0 });
@@ -762,15 +817,24 @@
     document.body.classList.toggle('mode-perfect', perfect);
     $('perfectPickField').hidden = !perfect;
     var t = window.PerfectData && PerfectData.byKey(state.perfectKey);
-    var square = !state.perfectMatch && !!(t && t.w === t.h);
+    var square = !state.perfectMatch && state.selectedSolution < 0 && !!(t && t.w === t.h);
     $('perfectLevelField').hidden = !perfect;
     $('perfectLevel').disabled = !square;
-    if ($('perfectPick')) $('perfectPick').disabled = !!state.perfectMatch;
+    if ($('perfectPick')) $('perfectPick').disabled = !!state.perfectMatch || state.selectedSolution >= 0;
+    if ($('customRectField')) $('customRectField').hidden = !perfect;
+    var hasSol = perfect && state.selectedSolution >= 0 && state.searchedSolutions.length > 0;
+    if ($('perfectFamilyField')) $('perfectFamilyField').hidden = !hasSol;
+    if ($('perfectSolutionsField')) $('perfectSolutionsField').hidden = !(perfect && state.searchedSolutions.length > 0);
     if (perfect) {
       updatePerfectNote();
       $('perfectLevelVal').textContent = state.perfectLevel;
       $('perfectLevel').value = state.perfectLevel;
       setRangeFill($('perfectLevel'));
+      if ($('chainLevel')) {
+        var chainV = $('chainLevel').value, scaleV = $('scaleK').value;
+        $('chainLevelVal').textContent = chainV; $('scaleKVal').textContent = scaleV;
+        setRangeFill($('chainLevel')); setRangeFill($('scaleK'));
+      }
       if ($('showLabels')) $('showLabels').checked = true;
     }
   }
@@ -963,10 +1027,14 @@
       state.perfectKey = this.value;
       var t = PerfectData.byKey(this.value);
       if (t && t.w !== t.h) state.perfectLevel = 0;
-      // Manual instance selection takes precedence over ratio matching.
+      // Manual instance selection takes precedence over ratio matching and
+      // over any WASM-searched solution.
       if ($('matchRatio')) $('matchRatio').checked = false;
       state.perfectMatch = null;
       state.perfectSource = null;
+      state.searchedSolutions = [];
+      state.selectedSolution = -1;
+      state.searchStats = null;
       state.cache.clear();
       updatePerfectNote();
       updateAlgoHint();
@@ -990,6 +1058,89 @@
       state.perfectLevel = +this.value;
       state.cache.clear();
       if (state.phase === 'result') runCompute();
+    });
+
+    /* ---- Perfect search: custom rectangle -> WASM worker pool ---------- */
+    function fillSolutionPicker() {
+      var sel = $('perfectSolutions');
+      if (!sel) return;
+      sel.innerHTML = state.searchedSolutions.map(function (s, i) {
+        return '<option value="' + i + '">#' + (i + 1) + ' · ' + s.w + '×' + s.h +
+               ' · ' + s.order + ' 阶' + (s.sides.length ? ' · ' + s.sides[0] + '…' : '') + '</option>';
+      }).join('');
+      sel.value = String(Math.max(0, state.selectedSolution));
+    }
+
+    function runPerfectSearch() {
+      if (!window.PerfectSolver || state.searchBusy) return;
+      var w = clamp(Math.round(+$('customW').value || 33), 2, 384);
+      var h = clamp(Math.round(+$('customH').value || 32), 2, 384);
+      $('customW').value = w; $('customH').value = h;
+      state.searchBusy = true;
+      var note = $('perfectSearchNote');
+      note.textContent = T.t('perfectSearchBusy');
+      $('btnPerfectSearch').disabled = true;
+      var t0 = Date.now();
+      PerfectSolver.search(w, h, { seed: seed(), maxNodes: 4000000, maxSolutions: 12, _t0: t0 })
+        .then(function (r) {
+          state.searchBusy = false;
+          $('btnPerfectSearch').disabled = false;
+          state.searchStats = r.stats;
+          state.searchedSolutions = r.solutions;
+          state.selectedSolution = r.solutions.length ? 0 : -1;
+          state.perfectMatch = null; state.perfectSource = null;
+          if (r.solutions.length) {
+            fillSolutionPicker();
+            $('perfectSolutionsField').hidden = false;
+            $('perfectFamilyField').hidden = false;
+            var st = r.stats;
+            note.textContent = T.t('perfectSearchFound', {
+              engine: st.engine, count: r.solutions.length,
+              nodes: st.nodes.toLocaleString('en-US'), order: st.bestOrder,
+              trunc: st.truncated ? T.t('perfectSearchTrunc') : ''
+            });
+            var s = r.solutions[0];
+            $('solutionNote').textContent = s.w + '×' + s.h + ' · ' + s.order +
+              ' 块 · ' + s.sides.join(', ') + ' · ' + T.t('statCoverage') + ' 100%';
+            runCompute();
+          } else {
+            $('perfectSolutionsField').hidden = true;
+            $('perfectFamilyField').hidden = true;
+            note.textContent = T.t('perfectSearchNone');
+            refreshResult();
+          }
+          updateAlgoHint();
+        })
+        .catch(function (err) {
+          state.searchBusy = false;
+          $('btnPerfectSearch').disabled = false;
+          note.textContent = String(err && err.message || err);
+        });
+    }
+
+    if ($('btnPerfectSearch')) $('btnPerfectSearch').addEventListener('click', runPerfectSearch);
+    if ($('btnPerfectRandom')) $('btnPerfectRandom').addEventListener('click', function () {
+      var w = 24 + Math.floor(Math.random() * 200), h = 24 + Math.floor(Math.random() * 200);
+      $('customW').value = w; $('customH').value = h;
+      runPerfectSearch();
+    });
+    if ($('perfectSolutions')) $('perfectSolutions').addEventListener('change', function () {
+      state.selectedSolution = +this.value;
+      var s = state.searchedSolutions[state.selectedSolution];
+      if (s) $('solutionNote').textContent = s.w + '×' + s.h + ' · ' + s.order +
+        ' 块 · ' + s.sides.join(', ') + ' · ' + T.t('statCoverage') + ' 100%';
+      state.cache.clear();
+      if (state.phase === 'result') runCompute();
+    });
+    ['chainLevel', 'scaleK'].forEach(function (id) {
+      var el = $(id); if (!el) return;
+      el.addEventListener('input', function () {
+        $(id + 'Val').textContent = this.value; setRangeFill(this);
+      });
+      el.addEventListener('change', function () {
+        state.cache.clear();
+        if (state.phase === 'result') runCompute();
+      });
     });
 
     var reparamTimer = 0;
@@ -1304,6 +1455,18 @@
         state.perfectLevel = clamp(+q.get('level') || 0, 0, 3);
         $('perfectLevel').value = state.perfectLevel; $('perfectLevelVal').textContent = state.perfectLevel;
       }
+      if (q.get('chain')) {
+        var c = clamp(+q.get('chain') || 0, 0, 6);
+        $('chainLevel').value = c; $('chainLevelVal').textContent = c; setRangeFill($('chainLevel'));
+      }
+      if (q.get('k')) {
+        var k = clamp(+q.get('k') || 1, 1, 24);
+        $('scaleK').value = k; $('scaleKVal').textContent = k; setRangeFill($('scaleK'));
+      }
+      if (q.get('w') && q.get('h') && $('algoMode').value === 'perfect') {
+        $('customW').value = clamp(+q.get('w') || 33, 2, 384);
+        $('customH').value = clamp(+q.get('h') || 32, 2, 384);
+      }
       if (q.get('centers')) { $('centers').value = q.get('centers'); $('centersVal').textContent = q.get('centers'); setRangeFill($('centers')); }
       if (q.get('order')) { $('order').value = q.get('order'); $('orderVal').textContent = q.get('order'); setRangeFill($('order')); }
       if (q.get('radius')) { $('radius').value = q.get('radius'); $('radiusVal').textContent = (+q.get('radius')).toFixed(2); setRangeFill($('radius')); }
@@ -1315,6 +1478,15 @@
       var portrait = window.innerWidth <= 640 && window.innerHeight > window.innerWidth;
       var demoRatio = parseFloat(q.get('ratio')) || (portrait ? 0.62 : 1.5);
       runCompute({ ratio: demoRatio, noAnim: true });
+      if (q.get('w') && q.get('h') && $('algoMode').value === 'perfect' && window.PerfectSolver) {
+        // Defer one tick so the Worker pool finishes initialising.
+        setTimeout(function () {
+          var bw = clamp(Math.round(+q.get('w')) || 33, 2, 384);
+          var bh = clamp(Math.round(+q.get('h')) || 32, 2, 384);
+          $('customW').value = bw; $('customH').value = bh;
+          $('btnPerfectSearch').click();
+        }, 80);
+      }
       if (portrait && !q.get('zoom')) {
         state.view.scale *= 1.16;
         syncView(); updateZoomLabel(); requestRender(true);

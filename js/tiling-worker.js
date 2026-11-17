@@ -13,6 +13,7 @@ importScripts('wasm-module.js');
 
 var PAGES = 128;                 // 8 MiB, far above the 1 MiB heap base
 var SLOT_BYTES = 2097152;        // 65536 tiles x 32 bytes per worker slot
+var PF_OUT_WORDS = 120000;       // perfect_search solution buffer (ints)
 var modulePromise = WasmModule.compile();
 var inst = null, mem = null, f64 = null, IN = 0, OUT = 0;
 
@@ -33,6 +34,30 @@ self.onmessage = function (e) {
       self.postMessage({ type: 'ready', version: inst.exports.kernel_version(), heap: heap });
     }).catch(function (err) {
       self.postMessage({ type: 'error', message: String(err) });
+    });
+    return;
+  }
+  if (d.type === 'perfect') {
+    if (!inst) { self.postMessage({ type: 'perfectDone', id: d.id, error: 'not initialised' }); return; }
+    // Reuse the tile output area: 120000 ints = 480 KB, well inside SLOT_BYTES.
+    var pOut = OUT, pStats = OUT + PF_OUT_WORDS * 4, pCells = pStats + 64;
+    var n = inst.exports.perfect_search(
+      d.W | 0, d.H | 0, d.seed >>> 0, d.maxNodes | 0,
+      d.maxSolutions | 0, d.minOrder | 0, pOut, pStats);
+    var st = new Int32Array(mem.buffer, pStats, 4);
+    var flat = new Int32Array(mem.buffer, pOut, n > 0 ? pCells - pOut : 0);
+    // Decode [count, x,y,s, ...] records into plain arrays for transfer.
+    var sols = [], p = 0;
+    for (var k = 0; k < n && p < flat.length; k++) {
+      var cnt = flat[p++], cells = [];
+      for (var j = 0; j < cnt && p + 2 < flat.length; j++) {
+        cells.push(flat[p], flat[p + 1], flat[p + 2]); p += 3;
+      }
+      sols.push(cells);
+    }
+    self.postMessage({
+      type: 'perfectDone', id: d.id, solutions: sols,
+      nodes: st[0], truncated: st[2], bestOrder: st[3]
     });
     return;
   }

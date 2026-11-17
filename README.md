@@ -22,7 +22,7 @@ An interactive, dependency-free visual laboratory for **squaring the rectangle**
 - **Mobile first.** Portrait long screens (19.5:9 / 20:9), `dvh`, safe-area insets, 40 px touch targets, two-finger pinch zoom, and a portrait-oriented default world on phones.
 - **Custom dense centres in all three modes.** Double-click to add, drag a marker to move, right-click to remove the nearest; centres are already sub-pixel fine on the first frame and survive mode switches.
 - **Minimum-tile far field.** An exact Euclidean / continued-fraction skeleton keeps only `Σ qᵢ` large squares away from the centres (see §3.8 for its theoretical limits).
-- **C++ WASM multicore + installable PWA.** A ~9 KB freestanding C++17 kernel runs in a Web Worker pool; the result is tile-identical to the JS engine. A service worker adds offline caching and desktop installation.
+- **C++ WASM multicore + installable PWA.** A freestanding C++17 kernel (LOD tiling + exact perfect-dissection search/verification) runs in a Web Worker pool; the tile path is identical to the JS engine. A service worker adds offline caching and desktop installation.
 
 ---
 
@@ -149,6 +149,22 @@ The subdivision hot path is a C++17 kernel (`native/tiling_core.cpp`) compiled w
 
 ---
 
+### 3.9 User-defined rectangles, exact perfect search, and an unbounded family
+
+Perfect dissection is no longer limited to the pre-audited catalogue. With the **Perfect dissection** mode selected, a new control group asks for an integer **width × height** (2–384). Pressing *Search perfect* dispatches the request to every WASM worker with a different seed; each worker runs a complete skyline backtracker in C++ (`perfect_search`) that fills the leftmost-lowest notch, enforcing pairwise-distinct integer sides and an exact `i64` area bound. Found tilings are re-checked by `perfect_verify` (gaps, overlaps, duplicate sides and area in 64-bit integers) before they reach the UI — a false dissection can never be displayed. The classic `33×32` Moroń rectangle (order 9, sides `18,15,14,10,9,8,7,4,1`) is found from scratch in well under a second; the worker pool typically returns several distinct solutions.
+
+Two arithmetic libraries make the input and the output exact:
+
+- **Fraction.js** rationalises a decimal ratio (e.g. `1.618 → 144:89`) with bounded denominators before it is scaled into a searchable integer frame.
+- **Decimal.js** evaluates catalogue-match residuals at 40 significant digits, so a near-miss is never rounded to a zero error.
+- **BigInt** (native, arbitrary precision) carries the substitution chain far beyond `2^53`; Decimal.js converts the final coordinates to floats only at draw time.
+
+The **self-substitution** slider turns any primitive solution (searched or curated) into an unbounded family: replace one square whose side divides the frame by a scaled copy of the whole tiling. The order grows `21 → 41 → 81 → 161 → 321 → …` (`n → 2n−1`) with sides still pairwise distinct and coverage still exact; an integer **scale k** further multiplies the family. Because both operations can be repeated indefinitely, the number of perfect dissections obtainable from one primitive is effectively unbounded — the practical "nearly infinite" family. Every intermediate frame is kept as an exact BigInt, so a `10^24`-sized frame renders without floating-point drift.
+
+`js/perfect-solver.js` is the bridge: frame rationalisation, parallel search dispatch, exact verification, BigInt scaling/substitution and Decimal-to-float projection. If WASM is unavailable it falls back to an equivalent JS backtracker with a smaller node budget. Run `node tests/verify.js` (algorithm suite) and `node tests/smoke.js` (real Edge/Chromium via CDP) to verify the whole pipeline.
+
+---
+
 ## 4. Project structure
 
 ```
@@ -158,6 +174,7 @@ Square-division/
 ├── essay.en.html         # Technical essay, English (self-contained, inline SVG, linked refs)
 ├── manifest.webmanifest  # Installable PWA manifest (standalone, 192/512 icons)
 ├── sw.js                 # Offline cache + optional COOP/COEP injection
+├── native/tiling_core.cpp # C++17 kernel: LOD tiles, perfect search, exact verify
 ├── css/style.css         # Themes, glassmorphism, subtle gradients, responsive layout
 ├── js/
 │   ├── i18n.js           # Chinese / English dictionaries and DOM text binding
@@ -165,6 +182,7 @@ Square-division/
 │   ├── perfect-data.js   # 11 audited perfect dissections (Bouwkampcode, precomputed)
 │   ├── perfect-catalog.js # 1054 verified simple perfect rectangles (orders 9-14)
 │   ├── perfect-match.js   # exact ratio rationalisation + Decimal-residual matching
+│   ├── perfect-solver.js  # custom frame, WASM search dispatch, BigInt family, verification
 │   ├── vendor/fraction.min.js, vendor/decimal.min.js  # vendored arithmetic (no CDN)
 │   ├── squaring.js       # Dissection engine, adjacency graph, colouring, validation
 │   ├── wasm-module.js    # Generated: base64-inlined C++/WASM binary (offline workers)
@@ -232,9 +250,9 @@ The camera is finite even though the zoom is not: the viewport can never be drag
 
 **Aspect-ratio matching**: with "Match the drawn ratio in the catalogue" enabled (default), the aspect ratio you draw is rationalised by Fraction.js (continued fractions, denominator ≤ 20000) and matched against all **1054 verified simple perfect rectangles** from the Bouwkampcode corpus (orders 9–14). Decimal.js evaluates the residual at 40 significant digits; the closest instance is displayed with its rational ratio, exact frame and percentage error, e.g. `3:2 → 374×249 · error 0.134%`. The catalogue is decoded deterministically in skyline order (no runtime search), all 1054 records are audited for area conservation, zero gaps and pairwise-distinct integer sides, and the chosen tiling always covers its frame exactly. Uncheck the box (or pick an instance manually) to return to the curated list; automatically matched tilings disable substitution.
 
-This mode has a finite number of squares (9–161); the camera still zooms and pans, while the density-field parameters do not apply and are hidden automatically.
+A primitive tiling has finitely many squares (9–161); the camera still zooms and pans, while the density-field parameters do not apply and are hidden automatically. The self-substitution chain described in §3.9 can extend this to an unbounded family.
 
-**Substitution refinement**: for square instances, the "Substitution depth" slider (0–3) applies the Henle–Henle / Anderson construction — replace one square by a shrunken copy of the whole tiling (the geometric counterpart of the electrical network's "sub-network substitution"). The square count grows `21 → 41 → 81 → 161` (order `n → 2n−1`), and **every step is re-verified for pairwise-distinct sides and exact coverage**. `cpss41` / `cpss41b` are order-41 compound perfect squared squares (CPSS) obtained by substituting Duijvestijn's 112 into itself, matching the Squaring.Net catalogue. Large side labels are shown with T/G/M/k suffixes.
+**Substitution refinement**: for square instances, the **Self-substitution levels** slider (0–6) applies the Henle–Henle / Anderson construction — replace one square by a shrunken copy of the whole tiling (the geometric counterpart of the electrical network's "sub-network substitution"). The square count grows `21 → 41 → 81 → 161 → 321 → …` (order `n → 2n−1`) with **BigInt** keeping every side an exact integer and coverage exact; an integer scale `k` multiplies the frame further. `cpss41` / `cpss41b` are order-41 compound perfect squared squares (CPSS) obtained by substituting Duijvestijn's 112 into itself, matching the Squaring.Net catalogue. Large side labels are shown with T/G/M/k suffixes.
 
 Theme and language are persisted in `localStorage`.
 
@@ -251,6 +269,9 @@ Useful for sharing a state or for automated screenshots:
 | `level` | `level=2` | Substitution depth 0–3 (square instances only) |
 | `centers` | `centers=3` | Number of dense centres |
 | `ratio` | `ratio=1.5` | Rectangle aspect ratio |
+| `w`, `h` | `w=33&h=32` | Custom integer frame for the perfect searcher |
+| `chain` | `chain=3` | BigInt self-substitution levels (square frames) |
+| `k` | `k=8` | Integer scale multiplier for the family |
 | `zoom` | `zoom=2000000` | Zoom multiplier centred on the first focus |
 | `theme` | `theme=light` | `dark` or `light` |
 | `lang` | `lang=en` | `zh` or `en` |

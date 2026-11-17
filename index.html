@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="css/style.css?v=10">
+  <link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
   <!-- Full-screen canvas -->
@@ -95,6 +95,34 @@
         <div class="field-row"><label for="perfectLevel" data-i18n="perfectLevelLabel"></label><output id="perfectLevelVal">0</output></div>
         <input type="range" id="perfectLevel" min="0" max="3" step="1" value="0">
         <p class="hint-line" id="perfectLevelHint" data-i18n="perfectLevelHint"></p>
+      </div>
+
+      <div class="field" id="customRectField" hidden>
+        <span class="group-label" data-i18n="customRectLabel"></span>
+        <div class="size-row">
+          <label class="size-cell"><span data-i18n="sizeW"></span><input type="number" id="customW" min="2" max="384" step="1" value="33" inputmode="numeric"></label>
+          <span class="size-times">×</span>
+          <label class="size-cell"><span data-i18n="sizeH"></span><input type="number" id="customH" min="2" max="384" step="1" value="32" inputmode="numeric"></label>
+        </div>
+        <div class="btn-row" style="margin-top:7px">
+          <button type="button" id="btnPerfectSearch" class="btn grad" data-i18n="btnPerfectSearch"></button>
+          <button type="button" id="btnPerfectRandom" class="btn" data-i18n="btnPerfectRandom"></button>
+        </div>
+        <p class="hint-line" id="perfectSearchNote" data-i18n="perfectSearchHint"></p>
+      </div>
+
+      <div class="field" id="perfectFamilyField" hidden>
+        <div class="field-row"><label for="chainLevel" data-i18n="chainLevelLabel"></label><output id="chainLevelVal">0</output></div>
+        <input type="range" id="chainLevel" min="0" max="6" step="1" value="0">
+        <div class="field-row"><label for="scaleK" data-i18n="scaleKLabel"></label><output id="scaleKVal">1</output></div>
+        <input type="range" id="scaleK" min="1" max="24" step="1" value="1">
+        <p class="hint-line" id="chainNote" data-i18n="chainHint"></p>
+      </div>
+
+      <div class="field" id="perfectSolutionsField" hidden>
+        <label for="perfectSolutions" data-i18n="perfectSolutionsLabel"></label>
+        <select id="perfectSolutions"></select>
+        <p class="hint-line" id="solutionNote"></p>
       </div>
 
       <div class="field" data-pmode-hide>
@@ -229,16 +257,17 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=10"></script>
-  <script src="js/bigdec.js?v=10"></script>
-  <script src="js/vendor/fraction.min.js?v=10"></script>
-  <script src="js/vendor/decimal.min.js?v=10"></script>
-  <script src="js/perfect-catalog.js?v=10"></script>
-  <script src="js/perfect-data.js?v=10"></script>
-  <script src="js/perfect-match.js?v=10"></script>
-  <script src="js/squaring.js?v=10"></script>
-  <script src="js/wasm-module.js?v=10"></script>
-  <script src="js/wasm-engine.js?v=10"></script>
-  <script src="js/app.js?v=10"></script>
+  <script src="js/i18n.js?v=11"></script>
+  <script src="js/bigdec.js?v=11"></script>
+  <script src="js/vendor/fraction.min.js?v=11"></script>
+  <script src="js/vendor/decimal.min.js?v=11"></script>
+  <script src="js/perfect-catalog.js?v=11"></script>
+  <script src="js/perfect-data.js?v=11"></script>
+  <script src="js/perfect-match.js?v=11"></script>
+  <script src="js/squaring.js?v=11"></script>
+  <script src="js/wasm-module.js?v=11"></script>
+  <script src="js/wasm-engine.js?v=11"></script>
+  <script src="js/perfect-solver.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
 </body>
 </html>

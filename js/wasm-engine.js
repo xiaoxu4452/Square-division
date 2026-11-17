@@ -63,7 +63,7 @@
             }
           } else if (d.type === 'error') {
             workers[idx].ready = false;
-          } else if (d.type === 'done' || d.type === 'error') {
+          } else if (d.type === 'done' || d.type === 'error' || d.type === 'perfectDone') {
             var p = pending.get(d.id);
             if (p) { pending.delete(d.id); p(d); }
           }
@@ -134,6 +134,79 @@
       },
       ox: ox, oy: oy
     };
+  }
+
+  /* ------------------------------ perfect dissection ------------------------------ */
+  var PF_OUT_WORDS = 120000, PF_STAT_WORDS = 16;
+
+  function decodePerfect(pOut, n) {
+    var flat = new Int32Array(memory.buffer, pOut, n > 0 ? PF_OUT_WORDS : 0);
+    var sols = [], p = 0;
+    for (var k = 0; k < n && p < flat.length; k++) {
+      var cnt = flat[p++], cells = [];
+      for (var j = 0; j < cnt && p + 2 < flat.length; j++) {
+        cells.push(flat[p], flat[p + 1], flat[p + 2]); p += 3;
+      }
+      sols.push(cells);
+    }
+    return sols;
+  }
+
+  function perfectSync(W, H, opts) {
+    if (!available || typeof instance.exports.perfect_search !== 'function') return null;
+    opts = opts || {};
+    var pOut = OUT, pStats = align8(pOut + PF_OUT_WORDS * 4);
+    var n = instance.exports.perfect_search(
+      W, H, opts.seed >>> 0, opts.maxNodes || 3000000,
+      opts.maxSolutions || 8, opts.minOrder || 9, pOut, pStats);
+    var st = new Int32Array(memory.buffer, pStats, 4);
+    return {
+      solutions: decodePerfect(pOut, n), nodes: st[0],
+      truncated: !!st[2], bestOrder: st[3]
+    };
+  }
+
+  var perfectId = 1000000;
+  function perfectAsync(W, H, opts) {
+    opts = opts || {};
+    var live = workers.filter(function (s) { return s.ready; });
+    if (!live.length) return Promise.resolve(perfectSync(W, H, opts));
+    var jobs = live.map(function (slot) {
+      return new Promise(function (resolve) {
+        var id = perfectId++;
+        var timer = setTimeout(function () {
+          if (pending.has(id)) { pending.delete(id); resolve(null); }
+        }, 12000);
+        pending.set(id, function (msg) {
+          clearTimeout(timer);
+          if (msg.type !== 'perfectDone' || msg.error) return resolve(null);
+          resolve({
+            solutions: msg.solutions, nodes: msg.nodes,
+            truncated: msg.truncated, bestOrder: msg.bestOrder
+          });
+        });
+        slot.w.postMessage({
+          type: 'perfect', id: id, W: W, H: H,
+          seed: (opts.seed >>> 0) + id * 2654435761 >>> 0,
+          maxNodes: opts.maxNodes || 3000000,
+          maxSolutions: opts.maxSolutions || 8,
+          minOrder: opts.minOrder || 9
+        });
+      });
+    });
+    return Promise.all(jobs).then(function (parts) {
+      var all = [], nodes = 0, trunc = false, best = 0, seen = Object.create(null);
+      parts.forEach(function (r) {
+        if (!r) return;
+        nodes += r.nodes || 0; trunc = trunc || r.truncated;
+        best = Math.max(best, r.bestOrder || 0);
+        (r.solutions || []).forEach(function (cells) {
+          var key = cells.slice().sort(function (a, b) { return a - b; }).join(',');
+          if (!seen[key]) { seen[key] = 1; all.push(cells); }
+        });
+      });
+      return { solutions: all, nodes: nodes, truncated: trunc, bestOrder: best };
+    });
   }
 
   function collect(packed, n, ox, oy, into) {
@@ -275,6 +348,17 @@
         minPx: opts.minPx == null ? 1.7 : opts.minPx,
         boost: opts.boost == null ? 0.72 : opts.boost
       }, 0);
+    },
+    perfectSearchSync: perfectSync,
+    perfectSearchAsync: perfectAsync,
+    verify: function (W, H, flat) {
+      if (!available || typeof instance.exports.perfect_verify !== 'function') return null;
+      var pCells = IN, pStats = align8(pCells + flat.length * 4);
+      var arr = new Int32Array(memory.buffer, pCells, flat.length);
+      arr.set(flat);
+      var ok = instance.exports.perfect_verify(W, H, pCells, flat.length / 3, pStats);
+      var st = new Int32Array(memory.buffer, pStats, 4);
+      return { ok: !!ok, gaps: st[0], overlaps: st[1], duplicates: st[2], area: st[3] };
     }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

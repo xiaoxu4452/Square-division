@@ -557,8 +557,8 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 <!-- Section 9 -->
 <section id="s9">
 <h2><span class="num">9.</span>验证与复杂度</h2>
-<p>项目的 <code>node tests/verify.js</code> 以 <strong>34 项断言</strong>覆盖上述全部机制，且全部通过（ALL PASS）。几何方面：面积守恒比值 1.000000、零空隙（gaps = 0）、零重叠（overlaps = 0）；深空方面：10<sup>9</sup> 倍放大生成 46,781 个方块，其屏幕尺寸<strong>全部</strong>为 5.59 px（minPx = maxPx = 5.59 px，说明 LOD 自适应把整幅图稳定在同一细分级别）；着色方面：93,112 条邻接边中同色对为 0（same = 0），低饱和调色板在全视图保持 25 个不同色相、深放大保持 16 个色相桶，且无黑/白/灰填充（minS = 28.0、minL = 43.0）；哈希方面：4096 个连续整数坐标的哈希值互不重复（unique = 4096）。</p>
-<div class="eq"><span class="eqn">(9.1)</span><span class="frac"><i>通过断言</i><b>总断言</b></span> = <span class="frac"><i>34</i><b>34</b></span> = 100%, &nbsp; gaps = overlaps = same = 0, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> / (<var>W</var><var>H</var>) = 1.000000.</div>
+<p>项目的 <code>node tests/verify.js</code> 以 <strong>63 项断言</strong>覆盖上述全部机制（含新增的完美搜索与无穷族），且全部通过（ALL PASS）。几何方面：面积守恒比值 1.000000、零空隙（gaps = 0）、零重叠（overlaps = 0）；深空方面：10<sup>9</sup> 倍放大生成 46,781 个方块，其屏幕尺寸<strong>全部</strong>为 5.59 px（minPx = maxPx = 5.59 px，说明 LOD 自适应把整幅图稳定在同一细分级别）；着色方面：93,112 条邻接边中同色对为 0（same = 0），低饱和调色板在全视图保持 25 个不同色相、深放大保持 16 个色相桶，且无黑/白/灰填充（minS = 28.0、minL = 43.0）；哈希方面：4096 个连续整数坐标的哈希值互不重复（unique = 4096）。</p>
+<div class="eq"><span class="eqn">(9.1)</span><span class="frac"><i>通过断言</i><b>总断言</b></span> = <span class="frac"><i>63</i><b>63</b></span> = 100%, &nbsp; gaps = overlaps = same = 0, &nbsp; Σ<var>s</var><sub>i</sub><sup>2</sup> / (<var>W</var><var>H</var>) = 1.000000.</div>
 <p>数值方面：BigDec 满足 0.1 + 0.2 = 0.3、10<sup>−30</sup> × 10<sup>9</sup> = 10<sup>−21</sup>，40 次锚点缩放后 scale ≈ 1.413×10<sup>11</sup> 仍为有限值；尺寸场方面：焦点中心目标尺寸远小于远场（near ≈ 0，far = 3072 = min(W, H)），且远场骨架最大方块恰为 3072，因而不被细分；经典模式方面：euclid 与 network 在 7 种长宽比下都精确铺满整个外框（面积比 1.000000、零空隙），Moroń 九块边长平方和恰为 1056 = 33×32，细分阶数由 0 升至 4 使方块数从 3 增至 49,923，77,751 块的密集剖分仍零空隙。这些断言把「宏观正确」与「深空不退化」同时钉死，任何一处回归都会立刻暴露。</p>
 <p>复杂度汇总：生成 O(N)，邻接 O(N log N)，着色 O(N·|P|·deg) 但因 deg 有界而近似 O(N)，验证 O(N log N)；N 由屏幕像素预算 (6.1) 而非世界尺度界定。此外在浏览器中通过 CDP 真实设备模拟对 390×844、360×800、844×390、1600×900 四种视口逐一检查，文档均无横向溢出、公式块可横向滚动而不撑破布局——保证 390 px 手机与 1000 px 桌面同样可读。所有断言都可在离线、零依赖的 Node 环境下复现。</p>
 </section>
@@ -615,6 +615,35 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 </svg>
 <figcaption>Figure 12. 成熟算法谱系与本项目 WASM 多线程数据流。上排为「枚举 3-连通平面图 → 解 Kirchhoff 方程 → Bouwkampcode 归档 → 完美平方方」的经典路线；中排为连分数、有限细分规则、MTRS 下界与整数规划；下排为 C++ 内核的 Worker 池调度。</figcaption>
 </figure>
+
+<h3>10.5 任意整数外框的完备搜索与精确校验</h3>
+<p>§10.1 的经典路线从平面图出发「正向」枚举全部完美解；本项目另辟一条「反向」实用路径：给定用户自定义整数外框 <var>W</var>×<var>H</var>，直接在 C++ 内核中 skyline 回溯求解。其完备性来自一个简单而强的观察：设 <var>y</var> 为当前剖分轮廓的最低高度、<var>x</var> 为达到该高度的最左列。覆盖点 (<var>x</var>, <var>y</var>) 的方块其左下角必须恰在此处——左侧列高度已大于 <var>y</var>（该点被占用），下侧已被填充，故它既不能向左也不能向下延伸。于是任何合法剖分都可按「反复填充最左最低缺口」的顺序生成，枚举完备。</p>
+<div class="eq"><span class="eqn">(10.3)</span> <var>x</var> = min{ <var>i</var> : <var>h</var><sub><var>i</var></sub> = min<sub><var>j</var></sub> <var>h</var><sub><var>j</var></sub> }, &nbsp; <var>a</var> = max{ <var>k</var> : <var>h</var><sub><var>x</var>+<var>k</var></sub> = <var>h</var><sub><var>x</var></sub> }, &nbsp; 1 ≤ <var>s</var> ≤ min(<var>a</var>, <var>H</var>−<var>h</var><sub><var>x</var></sub>)</div>
+<p>其中 <var>h</var><sub><var>i</var></sub> 为第 <var>i</var> 列轮廓高度，<var>a</var> 是可放置宽度，<var>s</var> 为候选边长。完美约束要求所有 <var>s</var> 两两互异；面积剪枝用 <span class="frac"><i>Σ<sub>已用</sub> s² + Σ<sub>可用</sub> s²</i><b>≥</b></span> <var>WH</var> 在 <var>i64</var> 中精确判定，不含任何浮点容差。每个候选顺序由种子置换，故多个 Worker 用不同种子并行搜索可返回不同本原解；同一解按边长多重集签名去重。找到的剖分还要经第二道独立校验：逐列扫描线检查缝隙与重叠、边长互异、以及 <var>i64</var> 面积守恒——<strong>未通过校验的解绝不进入 UI</strong>。这与 §9 的渲染侧校验相互独立，构成双保险。</p>
+<div class="eq"><span class="eqn">(10.4)</span> <var>V</var>(<var>W</var>,<var>H</var>, 𝒮) = [ Σ<var>s</var><sub><var>i</var></sub>² = <var>WH</var> ] ∧ [ |{<var>s</var><sub><var>i</var>}| = |𝒮| ] ∧ [ gaps = overlaps = 0 ]</div>
+
+<h3>10.6 精确算术库与接近无穷的解族</h3>
+<p>输入与输出两端各由成熟算术库守门。用户画出的小数比例先经 <a href="https://rawgit.com/rawify/Fraction.js/master/README.md" target="_blank" rel="noopener noreferrer">Fraction.js</a> 化为有界分母连分数渐近分数（如 1.618 → 144:89），再缩放到 ≤384 的整数外框；目录匹配残差由 <a href="https://mikemcl.github.io/decimal.js/" target="_blank" rel="noopener noreferrer">Decimal.js</a> 以 40 位有效数字计算，避免近失解被舍入成零误差。搜索器全程整数，而自代入链用原生 <strong>BigInt</strong> 任意精度承载：当外框达到 10<sup>24</sup> 量级时，双精度浮点连整数本身都无法表示，BigInt 却能保持每个边长为精确整数。</p>
+<p>从一个本原解出发有两种可无限重复的扩张。其一是整数缩放 <var>k</var>：所有坐标与边长同乘 <var>k</var>，边长互异性与覆盖性不变。其二是 Anderson 自代入：取边长 <var>s</var> 整除外框 <var>F</var> 的一个方块，把它替换为整幅剖分缩小 <var>m</var>=<var>F</var>/<var>s</var> 倍的副本，新外框 <var>F</var>′=<var>Fm</var>、阶数 <var>n</var>′=2<var>n</var>−1；只要代入后边长仍两两互异就接受。两条操作都闭合在「完美剖分」集合内，因此可迭代任意多次，得到 21→41→81→161→321→… 阶的无穷族——这就是本项目「接近无穷个完美剖分」的确切含义（不是指有限外框内解数真的无穷，而是指可构造的解族无界）。</p>
+<div class="eq"><span class="eqn">(10.5)</span> <var>n</var><sub><var>t</var>+1</sub> = 2<var>n</var><sub><var>t</var></sub> − 1, &nbsp; <var>n</var><sub><var>t</var></sub> = (<var>n</var><sub>0</sub>−1)·2<sup><var>t</var></sup> + 1, &nbsp; <var>F</var><sub><var>t</var>+1</sub> = <var>F</var><sub><var>t</var></sub><sup>2</sup>/<var>s</var></div>
+<figure>
+<svg viewBox="0 0 680 250" role="img" aria-label="skyline 回溯与自代入无穷族">
+  <text x="14" y="20" font-size="12" style="fill:var(--ink);stroke:none;font-weight:600">图 13. 左：skyline 完备回溯；右：自代入产生的无界解族</text>
+  <g font-size="10.5" style="fill:var(--ink);stroke:none">
+    <rect x="14" y="36" width="300" height="46" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="24" y="55">轮廓 h[]：最低缺口 (x,y)</text><text x="24" y="71">候选 s ≤ min(可放宽度, H−y) 且未用</text>
+    <rect x="14" y="96" width="300" height="46" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="24" y="115">i64 面积剪枝 + 种子置换顺序</text><text x="24" y="131">多 Worker 异种子并行 → 去重</text>
+    <rect x="14" y="156" width="300" height="46" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="24" y="175">perfect_verify：缝隙/重叠/互异/面积</text><text x="24" y="191">失败即丢弃，绝不进入 UI</text>
+    <rect x="366" y="36" width="300" height="46" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="376" y="55">本原解 n₀=21, 外框 F</text><text x="376" y="71">Duijvestijn 112×112 (Bouwkampcode)</text>
+    <rect x="366" y="96" width="300" height="46" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="376" y="115">自代入 ×t：n = 20·2ᵗ+1</text><text x="376" y="131">21 → 41 → 81 → 161 → 321 → …</text>
+    <rect x="366" y="156" width="300" height="46" rx="5" fill="none" stroke="var(--line)" stroke-width="1.2"/><text x="376" y="175">BigInt 精确外框 + Decimal 投影</text><text x="376" y="191">10²⁴ 量级无浮点漂移</text>
+  </g>
+  <g stroke="var(--accent)" stroke-width="1.3" fill="none">
+    <path d="M164 82 V96 M164 142 V156 M516 82 V96 M516 142 V156"/>
+  </g>
+  <text x="14" y="226" font-size="11" style="fill:var(--muted);stroke:none">Figure 13. 搜索器以完备 skyline 递归枚举并经独立 i64 校验；无界解族由整数缩放与自代入闭包生成，BigInt 保证任意深度的精确性。</text>
+</svg>
+<figcaption>Figure 13. 自定义矩形的完备搜索流水线，与从单个本原解生成接近无穷个完美剖分的两种闭包操作。</figcaption>
+</figure>
 </section>
 
 <!-- Section 11 (references) -->
@@ -636,6 +665,7 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
   <li><a href="https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem" target="_blank" rel="noopener noreferrer">Kirchhoff's Matrix–Tree Theorem</a>；<a href="https://en.wikipedia.org/wiki/Continued_fraction" target="_blank" rel="noopener noreferrer">Continued fraction</a>；<a href="https://en.wikipedia.org/wiki/Smith_diagram" target="_blank" rel="noopener noreferrer">Smith diagram</a>；<a href="https://en.wikipedia.org/wiki/Squaring_the_square" target="_blank" rel="noopener noreferrer">Squaring the square</a>（维基百科条目，含进一步书目）。</li>
   <li><a href="https://emscripten.org/docs/porting/pthreads.html" target="_blank" rel="noopener noreferrer">Emscripten: Pthreads support</a>；<a href="https://web.dev/articles/coop-coep" target="_blank" rel="noopener noreferrer">web.dev: COOP / COEP</a>；<a href="https://github.com/gzuidhof/coi-serviceworker" target="_blank" rel="noopener noreferrer">coi-serviceworker</a>；<a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable" target="_blank" rel="noopener noreferrer">MDN: Making PWAs installable</a>.（WebAssembly 多线程与桌面安装的工程依据。）</li>
   <li><a href="https://www.squaring.net/sq/ss/cpss/cpss.html" target="_blank" rel="noopener noreferrer">Squaring.Net — Compound Perfect Squared Squares, orders 24–86</a>.（Bouwkampcode / tablecode 目录与 c-net 计数表。）</li>
+  <li><a href="https://github.com/rawify/Fraction.js" target="_blank" rel="noopener noreferrer">Fraction.js</a>（有理数与连分数）、<a href="https://github.com/MikeMcl/decimal.js" target="_blank" rel="noopener noreferrer">Decimal.js</a>（任意精度十进制）、<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt" target="_blank" rel="noopener noreferrer">MDN: BigInt</a>（任意精度整数）.（§10.6 的成熟算术库与本地 vendored 依赖。）</li>
 </ol>
 <p class="note">以上链接均为可点击的<strong>外部检索入口</strong>（在新标签页打开），不是本页的资源依赖：所有样式、脚本与插图仍完全内联，断网时本文依旧可读。</p>
 </section>
@@ -663,7 +693,7 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 <tr><td><code>maxDepth</code></td><td>最大四叉深度</td><td>48</td></tr>
 <tr><td><code>PREC / SCALE</code></td><td>BigDec 定点精度 / 比例，见 (7.1)</td><td>80 / 10<sup>80</sup></td></tr>
 <tr><td><code>|P|</code></td><td>调色板颜色数，见 (8.2)</td><td>32</td></tr>
-<tr><td>断言数</td><td><code>tests/verify.js</code> 断言，见 (9.1)</td><td>24，全部通过</td></tr>
+<tr><td>断言数</td><td><code>tests/verify.js</code> 断言，见 (9.1)</td><td>63，全部通过</td></tr>
 </tbody>
 </table>
 <p>交互：滚轮或 +/− 缩放，拖拽平移，控制台可切换剖分算法（quad / euclid / network）、长宽比、焦点数、指数 p、调色板与随机种子；<code>?theme=dark|light</code> 由父页面通过 iframe 传入，本文据此在启动时给 <code>&lt;html&gt;</code> 设置 <code>data-theme</code>，两套配色均在 CSS 变量中完整定义。</p>

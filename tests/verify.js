@@ -340,7 +340,7 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   require('../js/wasm-engine.js');
   const E = globalThis.WasmEngine;
   ok('C++/WASM kernel instantiates without a runtime',
-    !!E && E.available() && E.version() === 2,
+    !!E && E.available() && E.version() === 3,
     'sha=' + (E ? E.sha() : 'n/a'));
 
   const bin = fs.readFileSync(path.join(__dirname, '..', 'wasm', 'tiling_core.wasm'));
@@ -368,6 +368,9 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   const js = S.generate(w, view, opts);
   const wasm = E.generateSync(w, view, opts);
   const key = arr => arr.map(t => [t.x, t.y, t.s, t.depth].join(',')).sort().join('|');
+  ok('WASM kernel exports the perfect-search and exact-verify entries',
+    exports.indexOf('perfect_search') >= 0 && exports.indexOf('perfect_verify') >= 0,
+    'exports=' + exports.join(','));
   ok('WASM kernel is tile-identical to the JS generator',
     !!wasm && wasm.length === js.length && key(wasm) === key(js) && S.validate(wasm, w).ok,
     'js=' + js.length + ' wasm=' + (wasm ? wasm.length : 'null'));
@@ -409,6 +412,67 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
   const residual = M.errorPercent(frac, { w: 593, h: 335 });
   ok('Decimal.js keeps the matching residual non-zero', residual > 0 && residual < 1,
     'fraction=' + frac.text + ' residual=' + residual.toFixed(6) + '%');
+}
+
+/* --------------------- Custom rectangle + WASM perfect search --------------------- */
+{
+  globalThis.Decimal = require('../js/vendor/decimal.min.js');
+  globalThis.Fraction = require('../js/vendor/fraction.min.js');
+  require('../js/wasm-engine.js');   // attaches globalThis.WasmEngine
+  const PS = require('../js/perfect-solver.js');
+  const E = globalThis.WasmEngine;
+
+  ok('toFrame rationalises a decimal ratio with bounded denominator',
+    PS.toFrame(1.618, 1, 384).d <= 384 && PS.toFrame(1.5, 1, 384).text === '3:2',
+    '1.618 -> ' + PS.toFrame(1.618, 1, 384).text +
+    ', 1.5 -> ' + PS.toFrame(1.5, 1, 384).text);
+
+  // The classic 32x33 Moron perfect rectangle, found by the C++ kernel.
+  const r = E.perfectSearchSync(33, 32, {
+    seed: 1, maxNodes: 3000000, maxSolutions: 4, minOrder: 9
+  });
+  ok('WASM searcher finds the 32x33 perfect rectangle',
+    !!r && r.solutions.length >= 1 && r.bestOrder >= 9,
+    'solutions=' + (r ? r.solutions.length : 0) +
+    ' nodes=' + (r ? r.nodes : 0) + ' order=' + (r ? r.bestOrder : 0));
+  if (r && r.solutions.length) {
+    const flat = r.solutions[0], v = E.verify(33, 32, flat);
+    const sides = [];
+    for (let i = 2; i < flat.length; i += 3) sides.push(flat[i]);
+    ok('WASM exact verifier accepts the searched tiling',
+      v && v.ok && v.gaps === 0 && v.overlaps === 0 && v.duplicates === 0 &&
+      v.area === 33 * 32 && new Set(sides).size === sides.length,
+      'area=' + (v ? v.area : 0) + ' dup=' + (v ? v.duplicates : 0));
+    ok('searched sides are the canonical Moron set',
+      sides.slice().sort((a, b) => b - a).join(',') === '18,15,14,10,9,8,7,4,1',
+      sides.slice().sort((a, b) => b - a).join(','));
+    // Reject a corrupted tiling (one side shrunk) -> area mismatch + gap.
+    const bad = flat.slice(); bad[2] = Math.max(1, bad[2] - 1);
+    const bv = E.verify(33, 32, bad);
+    ok('WASM verifier rejects a corrupted tiling', bv && !bv.ok && bv.gaps > 0,
+      'gaps=' + (bv ? bv.gaps : 0));
+  }
+
+  // BigInt self-substitution chain grows order without losing exactness.
+  globalThis.PerfectData = require('../js/perfect-data.js');
+  const base = PerfectData.all().find(t => t.w === 112 && t.h === 112);
+  const sol = { cells: base.cells.slice(), w: 112, h: 112, order: base.order };
+  const orders = [];
+  for (const lev of [0, 1, 2, 3, 4]) {
+    const fam = PS.infiniteFamily(sol, lev, 1);
+    const fl = PS.toFloatCells(fam);
+    orders.push(fl.length / 3);
+    let area = 0;
+    for (let i = 0; i < fl.length; i += 3) area += fl[i + 2] * fl[i + 2];
+    ok('BigInt substitution level ' + lev + ' conserves area',
+      Math.abs(area / (Number(fam.w) * Number(fam.w)) - 1) < 1e-9,
+      'frame=' + fam.w.toString().slice(0, 18) + ' order=' + (fl.length / 3));
+  }
+  ok('substitution chain yields order 21/41/81/161/321',
+    orders.join(',') === '21,41,81,161,321', orders.join(','));
+  ok('BigInt frame exceeds 2^53 at deep levels',
+    BigInt(PS.infiniteFamily(sol, 4, 1).w) > BigInt(Number.MAX_SAFE_INTEGER),
+    'frame=' + PS.infiniteFamily(sol, 4, 1).w.toString());
 }
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : fail + ' FAILED'));
