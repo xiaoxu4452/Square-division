@@ -18,7 +18,7 @@ An interactive, dependency-free visual laboratory for **squaring the rectangle**
 - **Strict colouring.** A 32-colour low-chroma palette (no black, white or grey) with a smooth large-scale colour flow. A greedy graph colouring with a hard constraint guarantees that every pair of edge-adjacent squares differs.
 - **Glassmorphic UI.** Translucent top bar, a control console that collapses into the top bar, a stats HUD, a zoom bar, and a single knowledge/explainer modal. Barely-there gradient controls (deliberately restrained, never neon), dark/light themes, Chinese/English.
 - **Classic reference modes.** Euclidean continued fractions and the Smith / Moroń electrical-network dissection both cover the *entire* rectangle exactly; an L-shaped ladder substitution lets the square count grow from hundreds to tens of thousands via the *Subdivision order* slider.
-- **Small-paper explainer.** The knowledge modal embeds a bilingual technical essay (`essay.zh.html` / `essay.en.html`): 11 numbered chapters, 27 numbered equations, 12 inline SVG plates, an abstract, references and a parameter appendix.
+- **Small-paper explainer.** The knowledge modal embeds a bilingual technical essay (`essay.zh.html` / `essay.en.html`): 12 chapters, 34 numbered equations and 14 inline SVG plates, including a full worked Kirchhoff/KCL solution of the 33×32 Moroń network (§3.1), a complete skyline-search complexity section (§10.5), and an exact Bouwkampcode-drawn order-21 squared square (Figure 11) — plus an abstract, references and a parameter appendix.
 - **Mobile first.** Portrait long screens (19.5:9 / 20:9), `dvh`, safe-area insets, 40 px touch targets, two-finger pinch zoom, and a portrait-oriented default world on phones.
 - **Custom dense centres in all three modes.** Double-click to add, drag a marker to move, right-click to remove the nearest; centres are already sub-pixel fine on the first frame and survive mode switches.
 - **Minimum-tile far field.** An exact Euclidean / continued-fraction skeleton keeps only `Σ qᵢ` large squares away from the centres (see §3.8 for its theoretical limits).
@@ -254,7 +254,9 @@ A primitive tiling has finitely many squares (9–161); the camera still zooms a
 
 **Substitution refinement**: for square instances, the **Self-substitution levels** slider (0–6) applies the Henle–Henle / Anderson construction — replace one square by a shrunken copy of the whole tiling (the geometric counterpart of the electrical network's "sub-network substitution"). The square count grows `21 → 41 → 81 → 161 → 321 → …` (order `n → 2n−1`) with **BigInt** keeping every side an exact integer and coverage exact; an integer scale `k` multiplies the frame further. `cpss41` / `cpss41b` are order-41 compound perfect squared squares (CPSS) obtained by substituting Duijvestijn's 112 into itself, matching the Squaring.Net catalogue. Large side labels are shown with T/G/M/k suffixes.
 
-Theme and language are persisted in `localStorage`.
+**Layout & controls.** On wide screens the glass console can be dragged by its header anywhere on the canvas (double-click the header to restore the default dock); its position is persisted in `localStorage`. The bottom-left HUD automatically shifts clear of a left-docked console, and the shortcut legend is a compact row inside the HUD so no bars overlap. The "draw a rectangle" hint sits at the top of the canvas. On phones the console uses a fixed top dock and the HUD/legend adapt to a 4×2 grid.
+
+Theme, language and console position are persisted in `localStorage`.
 
 ### URL parameters
 

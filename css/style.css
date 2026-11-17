@@ -115,7 +115,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   transition: opacity .26s ease, transform .26s cubic-bezier(.3, .8, .3, 1);
 }
 .console.is-collapsed { opacity: 0; transform: translateY(-30px) scale(.9); pointer-events: none; }
-.console-head { padding: 13px 15px 11px; display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--glass-line); }
+.console-head { padding: 13px 15px 11px; display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--glass-line); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.console-head:active { cursor: grabbing; }
+.console.is-dragging { transition: none !important; opacity: .96; box-shadow: 0 18px 50px rgba(10, 24, 44, .32); }
+.console.is-dragging .console-body { pointer-events: none; }
+.console-head .drag-hint { color: var(--faint); font-size: 15px; line-height: 28px; margin: 0 4px; align-self: center; opacity: .6; }
+.console-head .drag-hint:hover { opacity: 1; color: var(--accent); }
 .console-head h2 { margin: 1px 0 0; font-size: 15px; font-weight: 720; }
 .console-body { padding: 14px 15px 16px; overflow-y: auto; overscroll-behavior: contain; }
 .console-body::-webkit-scrollbar, .modal-scroll::-webkit-scrollbar { width: 7px; }
@@ -180,11 +185,11 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius
 .side-tip { margin: 13px 0 0; padding-top: 11px; border-top: 1px dashed var(--glass-line); color: var(--faint); font-size: 10.6px; line-height: 1.75; }
 
 /* ---------------- HUD / zoom bar / hints ---------------- */
-.hud { position: fixed; left: 16px; bottom: 16px; max-width: min(780px, calc(100vw - 250px)); border-radius: 15px; padding: 9px 14px; z-index: 15; }
+.hud { position: fixed; left: var(--hud-left, 16px); bottom: 16px; max-width: min(760px, calc(100vw - var(--hud-reserve, 200px))); border-radius: 15px; padding: 9px 14px; z-index: 15; transition: left .2s ease, max-width .2s ease; }
 .hud-stats { display: flex; flex-wrap: wrap; gap: 5px 18px; }
 .hud-item span { display: block; color: var(--faint); font-size: 9.5px; white-space: nowrap; }
 .hud-item b { display: block; font-size: 12.5px; font-weight: 720; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.hud-meta { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--glass-line); color: var(--faint); font-size: 10.2px; font-family: ui-monospace, Consolas, monospace; min-height: 15px; }
+.hud-meta { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--glass-line); color: var(--faint); font-size: 10.2px; font-family: ui-monospace, Consolas, monospace; min-height: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .zoombar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 4px; border-radius: 14px; padding: 6px; z-index: 15; }
 .zoombar button { width: 30px; height: 30px; border: none; border-radius: 9px; background: var(--sky-soft); color: var(--text); font-size: 16px; cursor: pointer; transition: .18s; }
@@ -193,16 +198,18 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius
 #zoomLabel { min-width: 64px; text-align: center; color: var(--muted); font-size: 11px; font-family: ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; }
 
 .stage-hint {
-  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, 80vw);
-  padding: 24px 22px; border-radius: 18px; text-align: center; z-index: 12; pointer-events: none;
+  position: fixed; left: 50%; top: 104px; transform: translateX(-50%); width: min(400px, 82vw);
+  padding: 18px 22px; border-radius: 18px; text-align: center; z-index: 12; pointer-events: none;
   transition: opacity .3s, transform .3s;
 }
-.stage-hint.is-hidden { opacity: 0; transform: translate(-50%, -46%) scale(.96); }
-.hint-icon { color: var(--accent); margin-bottom: 4px; }
-.stage-hint strong { display: block; font-size: 15px; }
-.stage-hint p { margin: 7px 0 0; color: var(--muted); font-size: 11.8px; line-height: 1.8; }
+.stage-hint.is-hidden { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(.97); }
+.hint-icon { color: var(--accent); margin-bottom: 2px; }
+.hint-icon svg { width: 34px; height: 34px; }
+.stage-hint strong { display: block; font-size: 14px; }
+.stage-hint p { margin: 5px 0 0; color: var(--muted); font-size: 11.2px; line-height: 1.65; }
 
-.keyhelp { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); border-radius: 20px; padding: 5px 14px; z-index: 11; color: var(--faint); font-size: 10.5px; white-space: nowrap; pointer-events: none; }
+/* keyhelp now lives inside the HUD as a compact footnote row. */
+.keyhelp { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--glass-line); color: var(--faint); font-size: 9.8px; line-height: 1.5; white-space: normal; }
 .tooltip { position: fixed; z-index: 35; pointer-events: none; padding: 7px 11px; border-radius: 10px; font-size: 11px; line-height: 1.7; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tooltip b { color: var(--accent); }
 .toast { position: fixed; left: 50%; bottom: 74px; transform: translate(-50%, 16px); padding: 9px 17px; border-radius: 11px; background: var(--glass); border: 1px solid var(--glass-line); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); color: var(--text); font-size: 12.5px; opacity: 0; pointer-events: none; transition: opacity .22s, transform .22s; z-index: 70; }
@@ -329,8 +336,8 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius
   .zoombar .fit-btn { padding: 0 10px; }
   #zoomLabel { min-width: 52px; font-size: 10px; }
 
-  .stage-hint { width: min(320px, 84vw); padding: 22px 18px; }
-  .stage-hint p { font-size: 11.5px; }
+  .stage-hint { top: calc(132px + var(--sa-t)); width: min(320px, 84vw); padding: 16px 18px; }
+  .stage-hint p { font-size: 11px; }
   .keyhelp { display: none; }
   .tooltip { display: none; }
   .toast { bottom: calc(120px + var(--sa-b)); max-width: 86vw; text-align: center; }

@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="css/style.css?v=11">
+  <link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body>
   <!-- Full-screen canvas -->
@@ -70,6 +70,7 @@
         <span class="eyebrow" data-i18n="consoleTag"></span>
         <h2 data-i18n="consoleTitle"></h2>
       </div>
+      <span class="drag-hint" aria-hidden="true" title="Drag to move">⠿</span>
       <button type="button" id="consoleCollapse" class="mini-icon" data-i18n-title="collapse" aria-label="Collapse">−</button>
     </div>
 
@@ -215,6 +216,7 @@
       <div class="hud-item"><span data-i18n="statPrecision"></span><b id="statPrecision">—</b></div>
     </div>
     <div class="hud-meta" id="metaLine"></div>
+    <div class="keyhelp" id="keyhelp" data-i18n="keyHelp"></div>
   </div>
 
   <!-- Bottom-right zoom controls -->
@@ -234,7 +236,6 @@
     <p data-i18n-html="hintText"></p>
   </div>
 
-  <div class="keyhelp glass" id="keyhelp" data-i18n="keyHelp"></div>
   <div class="tooltip glass" id="tooltip" hidden></div>
 
   <!-- Mathematics explainer (all content collected here) -->
@@ -257,17 +258,17 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=11"></script>
-  <script src="js/bigdec.js?v=11"></script>
-  <script src="js/vendor/fraction.min.js?v=11"></script>
-  <script src="js/vendor/decimal.min.js?v=11"></script>
-  <script src="js/perfect-catalog.js?v=11"></script>
-  <script src="js/perfect-data.js?v=11"></script>
-  <script src="js/perfect-match.js?v=11"></script>
-  <script src="js/squaring.js?v=11"></script>
-  <script src="js/wasm-module.js?v=11"></script>
-  <script src="js/wasm-engine.js?v=11"></script>
-  <script src="js/perfect-solver.js?v=11"></script>
-  <script src="js/app.js?v=11"></script>
+  <script src="js/i18n.js?v=12"></script>
+  <script src="js/bigdec.js?v=12"></script>
+  <script src="js/vendor/fraction.min.js?v=12"></script>
+  <script src="js/vendor/decimal.min.js?v=12"></script>
+  <script src="js/perfect-catalog.js?v=12"></script>
+  <script src="js/perfect-data.js?v=12"></script>
+  <script src="js/perfect-match.js?v=12"></script>
+  <script src="js/squaring.js?v=12"></script>
+  <script src="js/wasm-module.js?v=12"></script>
+  <script src="js/wasm-engine.js?v=12"></script>
+  <script src="js/perfect-solver.js?v=12"></script>
+  <script src="js/app.js?v=12"></script>
 </body>
 </html>

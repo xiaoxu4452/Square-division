@@ -75,6 +75,10 @@ async function cdp(url) {
   // fresh channel for commands to keep both: re-open a second CDP session.
   const cmd = await cdp(page.webSocketDebuggerUrl);
   await cmd.send('Runtime.enable');
+  await cmd.send('Page.enable');
+  await cmd.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440, height: 900, deviceScaleFactor: 1, mobile: false
+  });
   async function evaluate(expr) {
     const r = await cmd.send('Runtime.evaluate', {
       expression: expr, returnByValue: true, awaitPromise: true
@@ -140,6 +144,24 @@ async function cdp(url) {
   await sleep(600);
   const blocks2 = await evaluate('document.getElementById("statBlocks").textContent');
   ok('substitution level 2 renders 81 squares', blocks2 === '81', 'blocks=' + blocks2);
+
+  // Console header drag moves the panel; default dock restored on dblclick.
+  await goto(base + '?demo=1&lang=zh');
+  const before = await evaluate('document.getElementById("console").getBoundingClientRect().left');
+  await evaluate(`(function(){
+    var h=document.querySelector('#console .console-head'); var r=h.getBoundingClientRect();
+    var o={bubbles:true,pointerId:1,clientX:r.left+60,clientY:r.top+14};
+    h.dispatchEvent(new PointerEvent('pointerdown',o));
+    h.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:1,clientX:r.left+360,clientY:r.top+120}));
+    h.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:1,clientX:r.left+360,clientY:r.top+120}));
+    return true;})()`);
+  await sleep(250);
+  const after = await evaluate('document.getElementById("console").getBoundingClientRect().left');
+  ok('console header drag moves the panel', after > before + 100, 'before=' + before + ' after=' + after);
+  const hudLeft = await evaluate('parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hud-left"))');
+  ok('HUD shifts clear of a left-docked console', hudLeft > 300, 'hud-left=' + hudLeft);
+  const hintTop = await evaluate('(function(){var h=document.getElementById("stageHint");h.classList.remove("is-hidden");var t=h.getBoundingClientRect().top;return t;})()');
+  ok('hint popup sits near the top of the canvas', hintTop < 200, 'top=' + hintTop);
 
   ok('no JavaScript errors in the browser', errors.length === 0, errors.join(' | '));
 

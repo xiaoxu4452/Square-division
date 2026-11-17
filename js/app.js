@@ -38,7 +38,7 @@
     renderQueue: null, raf: 0, dirty: true, anim: null,
     hover: -1, hoverRect: null, wheelTimer: 0,
     pinch: null, touches: new Map(),
-    consoleOpen: true, modalOpen: false,
+    consoleOpen: true, modalOpen: false, consolePos: null,
     pending: false, genToken: 0, parallelDisabled: false
   };
 
@@ -922,6 +922,9 @@
       syncView();
       updateZoomLabel();
     }
+    // Keep a dragged console on-screen and the HUD out of its way after resize.
+    if (state.consolePos) applyConsolePos(state.consolePos.x, state.consolePos.y);
+    layoutHUD();
     requestRender(true);
   }
 
@@ -954,12 +957,106 @@
     if ($('perfectPick')) fillPerfectPicker();
   }
 
+  /* -------- Console docking: draggable position + HUD collision avoidance -- */
+  var CONSOLE_POS_KEY = 'sqr.consolePos';
+  function consoleBaseLeft() { return 16; }
+  function consoleBaseTop() { return 88; }
+
+  /** Move the HUD clear of an expanded, left-docked console. */
+  function layoutHUD() {
+    var root = document.documentElement, el = $('console'), hud = $('hud');
+    if (!el || !hud) return;
+    var narrow = state.W <= 860;
+    var open = state.consoleOpen && !el.classList.contains('is-collapsed');
+    if (narrow || !open) {
+      root.style.setProperty('--hud-left', '16px');
+      root.style.setProperty('--hud-reserve', '200px');
+      return;
+    }
+    var r = el.getBoundingClientRect();
+    // Only shift when the console actually sits in the lower-left HUD zone.
+    var overlapsBottom = r.bottom > state.H - 150;
+    var inLeftZone = r.left < state.W * 0.55;
+    if (overlapsBottom && inLeftZone) {
+      var left = Math.round(r.right + 14);
+      root.style.setProperty('--hud-left', left + 'px');
+      root.style.setProperty('--hud-reserve', (state.W - left + 16) + 'px');
+    } else {
+      root.style.setProperty('--hud-left', '16px');
+      root.style.setProperty('--hud-reserve', '200px');
+    }
+  }
+
+  function applyConsolePos(x, y) {
+    var el = $('console');
+    if (!el) return;
+    var r = el.getBoundingClientRect(), w = r.width || 312, h = r.height || 480;
+    x = clamp(Math.round(x), 8, Math.max(8, state.W - w - 8));
+    y = clamp(Math.round(y), 72, Math.max(72, state.H - Math.min(h, 120) - 16));
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    state.consolePos = { x: x, y: y };
+    try { localStorage.setItem(CONSOLE_POS_KEY, JSON.stringify(state.consolePos)); } catch (e) {}
+    layoutHUD();
+  }
+
+  function resetConsolePos() {
+    var el = $('console'); if (!el) return;
+    el.style.left = ''; el.style.top = '';
+    state.consolePos = null;
+    try { localStorage.removeItem(CONSOLE_POS_KEY); } catch (e) {}
+    layoutHUD();
+  }
+
+  function initConsoleDrag() {
+    var el = $('console'), head = el && el.querySelector('.console-head');
+    if (!head) return;
+    // Restore a saved position on wide screens only; phones use the CSS dock.
+    if (state.W > 860) {
+      try {
+        var p = JSON.parse(readStore(CONSOLE_POS_KEY, 'null'));
+        if (p && isFinite(p.x) && isFinite(p.y)) {
+          el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
+          state.consolePos = { x: p.x, y: p.y };
+        }
+      } catch (e) {}
+    }
+    var dragging = false, dx = 0, dy = 0, moved = false;
+    head.addEventListener('pointerdown', function (e) {
+      if (state.W <= 860) return;                    // fixed dock on narrow screens
+      if (e.target.closest('button, select, input')) return; // let the collapse button work
+      dragging = true; moved = false;
+      var r = el.getBoundingClientRect();
+      dx = e.clientX - r.left; dy = e.clientY - r.top;
+      el.classList.add('is-dragging');
+      try { head.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    head.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      if (Math.abs(e.clientX - dx - (state.consolePos ? state.consolePos.x : consoleBaseLeft())) > 2 ||
+          Math.abs(e.clientY - dy - (state.consolePos ? state.consolePos.y : consoleBaseTop())) > 2) moved = true;
+      applyConsolePos(e.clientX - dx, e.clientY - dy);
+    });
+    function end() {
+      if (!dragging) return;
+      dragging = false; el.classList.remove('is-dragging');
+    }
+    head.addEventListener('pointerup', end);
+    head.addEventListener('pointercancel', end);
+    // Double-click the header to return to the default dock.
+    head.addEventListener('dblclick', function (e) {
+      if (e.target.closest('button')) return;
+      resetConsolePos();
+    });
+  }
+
   function toggleConsole(force) {
     state.consoleOpen = force == null ? !state.consoleOpen : force;
     $('console').classList.toggle('is-collapsed', !state.consoleOpen);
     $('btnConsole').classList.toggle('is-active', state.consoleOpen);
     // On phones the expanded console covers the HUD; hide it to avoid overlap.
     document.body.classList.toggle('console-open', state.consoleOpen);
+    layoutHUD();
   }
   function openModal() {
     // Finish the current frame (including progressive drawing) before opening the explainer, so the background pattern is complete
@@ -1432,6 +1529,8 @@
     refreshPaint();
     resize();
     bind();
+    initConsoleDrag();
+    layoutHUD();
     updateAlgoHint();
     emptyHUD();
 

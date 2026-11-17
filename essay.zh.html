@@ -250,6 +250,13 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 </svg>
 <figcaption>Figure 3. 左：3:2 剖分的三条水平线 N0/N1/N2；右：对应的 Smith 电路，每个方块是一条 1 Ω 电阻、电流等于边长。宽度和守恒给出 Kirchhoff Σ I<sub>k</sub> = 0，高度和给出 Ohm V = I·R；整体等效电阻 R<sub>eq</sub> = W/H。</figcaption>
 </figure>
+
+<h3>3.1 一个完整的数值演算：从电路解出 Moroń 的九块</h3>
+<p>式 (3.1)–(3.4) 若只停留在类比，未免空泛。这里用 Moroń 的 33×32 完美矩形把整套流程走一遍，让读者看清「剖分 ⇄ 整数电流」是如何严格对上的。按图 4 的精确坐标，每个方块连接其上下两条水平线；把水平线的纵坐标当作节点电势 <var>V</var>，方块的边长当作支路电流 <var>I</var>，就得到一张 6 节点、9 支路的 Smith 图。纵坐标为 0 与 32 的两条线是源与汇，其间注入总电流 <var>I</var><sub>总</sub> = <var>W</var> = 33。</p>
+<p>对四个内部节点逐一套用 KCL「流入 = 流出」，立刻得到一组全为整数、且右端恰为相邻支路边长之和的方程：</p>
+<div class="eq"><span class="eqn">(3.5)</span><var>V</var><sub>15</sub>: 15 = 7+8, &nbsp; <var>V</var><sub>18</sub>: 18 = 14+4, &nbsp; <var>V</var><sub>22</sub>: 7+4 = 10+1, &nbsp; <var>V</var><sub>23</sub>: 8+1 = 9.</div>
+<p>源节点流出 18+15 = 33，汇节点流入 14+10+9 = 33，与注入电流守恒；电势差恰为节点纵坐标之差（18−0=18、15−0=15、22−15=7、23−15=8、32−18=14、22−18=4、32−22=10、23−22=1、32−23=9），逐条等于对应方块的边长，Ohm 定律 <var>I</var> = Δ<var>V</var>/1 Ω 全部成立。于是九个电流 {18, 15, 14, 10, 9, 8, 7, 4, 1} 同时满足：KCL、整数性、两两互异、且与外框面积守恒 Σ<var>s</var><sub>i</sub><sup>2</sup> = 1056 = 33×32 一致——这正是「完美矩形 ⟺ 具有互异正整数电流的可解网络」的一个具体实例。</p>
+<p>反过来，BSST 的核心定理保证：只要枚举出全部 3-连通平面图（c-net），对每张图把一条边选作电池、令其余边为 1 Ω，解线性方程组 <var>L</var><var>V</var> = <var>b</var>（<var>L</var> 为图拉普拉斯、<var>b</var> 为源汇注入向量），所得的整数电流若全为正且互异，就唯一对应一个完美剖分。<strong>本项目采用的 skyline 回溯（§10.5）走的是对偶路线</strong>：不去枚举图，而是直接在几何域填充最左最低缺口；两条路线殊途同归，前者的产物是后者的校验基准（§4 的 1054 条目录即来自前者的权威归档）。</p>
 </section>
 
 <!-- Section 4 -->
@@ -297,7 +304,7 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 </svg>
 <figcaption>Figure 4. Moroń 1925 的 33×32 完美矩形：9 个方块的精确整数布局（每块标注边长）。九块平方和为 1056 = 33×32，面积守恒；含 1×1 方块故 gcd = 1。</figcaption>
 </figure>
-<p>此后：1939 年 Sprague 构造出第一个<strong>完美平方方</strong>（perfect squared square），阶数 55、边长 4205；1978 年 Duijvestijn 借助计算机找到阶数最低的简单完美平方方——21 阶、112×112，并证明不存在更低阶的解。附录图 11 给出一个简化的 21 阶结构示意（非精确布局）。这些结果把 §1 的存在性问题推进为一个极值组合问题：在「所有边长互异」「本原」等约束下最小化方块数 n。从 9 块到 21 块，从矩形到正方形，难度跃升的根源在于边界条件从两条独立边变成了一条封闭的回路。</p>
+<p>此后：1939 年 Sprague 构造出第一个<strong>完美平方方</strong>（perfect squared square），阶数 55、边长 4205；1978 年 Duijvestijn 借助计算机找到阶数最低的简单完美平方方——21 阶、112×112，并证明不存在更低阶的解。附录图 11 按真实 Bouwkampcode 坐标精确绘出这一 112×112 布局。这些结果把 §1 的存在性问题推进为一个极值组合问题：在「所有边长互异」「本原」等约束下最小化方块数 n。从 9 块到 21 块，从矩形到正方形，难度跃升的根源在于边界条件从两条独立边变成了一条封闭的回路。</p>
 </section>
 
 <!-- Section 5 -->
@@ -673,7 +680,7 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 <!-- Section 12 (appendix) -->
 <section id="s12">
 <h2><span class="num">12.</span>附录：参数与交互</h2>
-<p>下表汇总全文出现的主要符号与可调参数，并给出项目控制台的默认值；随后说明与父页面 iframe 的交互约定。图 11 作为补充图版给出一个 21 阶完美平方方的结构示意。</p>
+<p>下表汇总全文出现的主要符号与可调参数，并给出项目控制台的默认值；随后说明与父页面 iframe 的交互约定。图 11 作为补充图版按真实坐标精确绘出 21 阶完美平方方。</p>
 <table>
 <caption>表 A. 主要参数、含义与取值（默认值对应项目控制台初始状态）。</caption>
 <thead><tr><th>参数</th><th>含义</th><th>取值 / 默认</th></tr></thead>
@@ -698,26 +705,20 @@ ol.refs li::before{counter-increment:r;content:"[" counter(r) "]";position:absol
 </table>
 <p>交互：滚轮或 +/− 缩放，拖拽平移，控制台可切换剖分算法（quad / euclid / network）、长宽比、焦点数、指数 p、调色板与随机种子；<code>?theme=dark|light</code> 由父页面通过 iframe 传入，本文据此在启动时给 <code>&lt;html&gt;</code> 设置 <code>data-theme</code>，两套配色均在 CSS 变量中完整定义。</p>
 <figure>
-<svg viewBox="0 0 600 270" style="width:100%;height:auto" role="img" aria-label="Schematic of a 21st-order perfect squared square">
-  <text x="30" y="24" font-size="13" style="fill:var(--accent);stroke:none">21 阶完美平方方 · 结构示意</text>
-  <path d="M30,35 h100 v100 h-100 Z M130,35 h50 v50 h-50 Z M180,35 h50 v50 h-50 Z M130,85 h50 v50 h-50 Z M180,85 h50 v50 h-50 Z M30,135 h50 v50 h-50 Z M80,135 h50 v50 h-50 Z M30,185 h50 v50 h-50 Z M80,185 h50 v50 h-50 Z M180,135 h50 v50 h-50 Z M130,185 h50 v50 h-50 Z M180,185 h50 v50 h-50 Z" style="fill:var(--fill);stroke:var(--line);stroke-width:1.2"/>
-  <path d="M130,135 h25 v25 h-25 Z M155,135 h25 v25 h-25 Z M130,160 h25 v25 h-25 Z M155,160 h25 v25 h-25 Z" style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1"/>
-  <rect x="30" y="35" width="200" height="200" style="fill:none;stroke:var(--accent-2);stroke-width:1.6"/>
-  <text x="80" y="90" font-size="16" text-anchor="middle" style="fill:var(--ink);stroke:none">100</text>
-  <text x="155" y="64" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">50</text>
-  <text x="142" y="150" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none">25</text>
-  <text x="205" y="160" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none">50</text>
-  <line x1="260" y1="24" x2="260" y2="248" style="fill:none;stroke:var(--muted);stroke-width:1.1;stroke-dasharray:5 4"/>
-  <text x="278" y="46" font-size="15" style="fill:var(--accent);stroke:none">Duijvestijn, 1978</text>
-  <text x="278" y="76" font-size="13" style="fill:var(--ink);stroke:none">最低阶简单完美平方方</text>
-  <text x="278" y="102" font-size="14" style="fill:var(--ink);stroke:none">阶数 n = 21</text>
-  <text x="278" y="128" font-size="14" style="fill:var(--ink);stroke:none">外框 112 × 112</text>
-  <text x="278" y="154" font-size="13" style="fill:var(--ink-soft);stroke:none">21 个整数边长方块，互不相同</text>
-  <text x="278" y="180" font-size="13" style="fill:var(--ink-soft);stroke:none">Σ sᵢ² = 112² = 12544</text>
-  <text x="278" y="206" font-size="13" style="fill:var(--ink-soft);stroke:none">gcd(sᵢ) = 1（本原）</text>
-  <text x="278" y="234" font-size="12" style="fill:var(--muted);stroke:none">计算机穷举证明无更低阶解；本图为简化示意，非精确布局</text>
+<svg viewBox="0 0 600 270" style="width:100%;height:auto" role="img" aria-label="Exact Duijvestijn 112x112 order-21 perfect squared square">
+  <text x="30" y="22" font-size="13" style="fill:var(--accent);stroke:none;font-weight:600">Duijvestijn 1978 · 21 阶简单完美平方方 · 112×112（精确布局）</text>
+<rect x="30" y="34" width="100" height="100" fill="#6b8fb0" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="170" y="174" width="84" height="84" fill="#9a7b8e" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="96" y="184" width="74" height="74" fill="#7f9b7e" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="130" y="34" width="70" height="70" fill="#a08a5c" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="30" y="192" width="66" height="66" fill="#6f8f9c" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="30" y="134" width="58" height="58" fill="#967d9a" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="200" y="34" width="54" height="54" fill="#7d987f" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="88" y="134" width="50" height="50" fill="#a28a63" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="206" y="126" width="48" height="48" fill="#6d92a8" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="216" y="88" width="38" height="38" fill="#937f97" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="170" y="138" width="36" height="36" fill="#809a80" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="160" y="104" width="34" height="34" fill="#a48b62" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="138" y="152" width="32" height="32" fill="#718fa9" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="130" y="104" width="30" height="30" fill="#987e96" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="194" y="104" width="22" height="22" fill="#82997f" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="138" y="134" width="18" height="18" fill="#a68d64" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="200" y="88" width="16" height="16" fill="#7492aa" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="156" y="138" width="14" height="14" fill="#9a8198" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="194" y="126" width="12" height="12" fill="#859b81" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="88" y="184" width="8" height="8" fill="#a99068" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/><rect x="156" y="134" width="4" height="4" fill="#7795ad" fill-opacity=".34" stroke="var(--accent)" stroke-width="1"/>
+<text x="80" y="88" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">50</text><text x="212" y="220" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">42</text><text x="133" y="225" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">37</text><text x="165" y="73" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">35</text><text x="63" y="229" font-size="12" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">33</text><text x="59" y="167" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">29</text><text x="227" y="65" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">27</text><text x="113" y="163" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">25</text><text x="230" y="154" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">24</text><text x="235" y="111" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">19</text><text x="188" y="160" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">18</text><text x="177" y="125" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">17</text><text x="154" y="172" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">16</text><text x="145" y="123" font-size="9" text-anchor="middle" style="fill:var(--ink);stroke:none;font-weight:700">15</text>
+  <rect x="30" y="34" width="224" height="224" fill="none" stroke="var(--accent-2)" stroke-width="2"/>
+  <text x="278" y="60" font-size="12" style="fill:var(--ink);stroke:none;font-weight:700">21 个互异边长</text>
+  <text x="278" y="82" font-size="10" style="fill:var(--muted);stroke:none">50, 42, 37, 35, 33, 29, 27, 25, 24, 19, 18</text>
+  <text x="278" y="98" font-size="10" style="fill:var(--muted);stroke:none">17, 16, 15, 11, 9, 8, 7, 6, 4, 2</text>
+  <text x="278" y="132" font-size="11" style="fill:var(--ink);stroke:none">Σ sᵢ² = 112² = 12544</text>
+  <text x="278" y="152" font-size="11" style="fill:var(--ink);stroke:none">gcd = 1 · 最低阶唯一解</text>
+  <text x="278" y="180" font-size="10.5" style="fill:var(--muted);stroke:none">每块为精确整数边长，</text>
+  <text x="278" y="198" font-size="10.5" style="fill:var(--muted);stroke:none">按 Bouwkampcode 解码绘制。</text>
 </svg>
-<figcaption>Figure 11. 21 阶完美平方方的结构示意：以嵌套的、尺寸悬殊的方块铺满一个正方形，传达「同阶数下所有边长互异」的思想。图中为简化示意，并非 Duijvestijn 1978 的 112×112 精确布局。</figcaption>
+<figcaption>Figure 11. Duijvestijn 1978 的 21 阶简单完美平方方：按真实 Bouwkampcode 坐标精确绘制的 112×112 布局，21 个边长两两互异，Σ sᵢ² = 12544 = 112²。</figcaption>
 </figure>
 
 <h3>补充 B：两种经典模式的全幅覆盖与阶梯细分</h3>

@@ -451,6 +451,18 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
     const bv = E.verify(33, 32, bad);
     ok('WASM verifier rejects a corrupted tiling', bv && !bv.ok && bv.gaps > 0,
       'gaps=' + (bv ? bv.gaps : 0));
+    // Independent BigInt re-verification.
+    const b1 = PS.verifyBigInt(33, 32, flat);
+    ok('BigInt verifier accepts the exact tiling and flags it primitive',
+      b1.ok && b1.area === '1056' && b1.distinct && b1.primitive && b1.gaps === 0,
+      'area=' + b1.area + ' distinct=' + b1.distinct + ' primitive=' + b1.primitive);
+    ok('BigInt verifier rejects a corrupted tiling', !PS.verifyBigInt(33, 32, bad).ok,
+      'gaps=' + PS.verifyBigInt(33, 32, bad).gaps);
+    // A uniform scaling stays perfect but becomes non-primitive.
+    const scaled = PS.scaleCells(flat, 3).map(Number);
+    const b2 = PS.verifyBigInt(99, 96, scaled);
+    ok('BigInt verifier detects loss of primitivity under scale x3',
+      b2.ok && !b2.primitive, 'ok=' + b2.ok + ' primitive=' + b2.primitive);
   }
 
   // BigInt self-substitution chain grows order without losing exactness.

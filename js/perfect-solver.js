@@ -123,6 +123,11 @@
         var flat = res.solutions[i];
         var v = E && E.verify ? E.verify(w, h, flat) : jsVerify(w, h, flat);
         if (!v || !v.ok) continue;                 // never expose a false tiling
+        // Independent arbitrary-precision re-check: a single checker bug
+        // cannot certify an incorrect dissection.
+        var big = verifyBigInt(w, h, flat);
+        if (!big.ok) continue;
+        v.big = big;                               // area/distinct/primitive/gaps
         var sides = [];
         for (var j = 2; j < flat.length; j += 3) sides.push(flat[j]);
         sides.sort(function (a, b) { return b - a; });
@@ -205,6 +210,58 @@
     }
     return { ok: area === W * H && dup === 0, gaps: area === W * H ? 0 : 1,
              overlaps: 0, duplicates: dup, area: area };
+  }
+
+  /**
+   * Independent BigInt re-verification: exact area, pairwise-distinct sides,
+   * in-frame bounds and a full scan-line coverage test. This is deliberately
+   * separate from the WASM i64 checker so a single bug cannot certify a false
+   * tiling. Returns {ok, area, distinct, primitive, gaps, overlaps}.
+   */
+  function verifyBigInt(W, H, flat) {
+    var n = flat.length / 3;
+    var area = 0n, sides = Object.create(null), distinct = true, primitive = true;
+    var target = BigInt(W) * BigInt(H), FW = BigInt(W), FH = BigInt(H);
+    for (var i = 0; i < flat.length; i += 3) {
+      var x = BigInt(flat[i]), y = BigInt(flat[i + 1]), s = BigInt(flat[i + 2]);
+      if (s <= 0n || x < 0n || y < 0n || x + s > FW || y + s > FH) {
+        return { ok: false, gaps: 1, overlaps: 0, area: '0', distinct: false, primitive: false };
+      }
+      area += s * s;
+      var key = s.toString();
+      if (sides[key]) distinct = false; sides[key] = 1;
+    }
+    // gcd of all sides (BigInt Euclid) decides primitivity.
+    var g = 0;
+    for (i = 2; i < flat.length; i += 3) g = gcd(g, flat[i]);
+    primitive = g === 1;
+    // Exact scan-line coverage over x-slabs.
+    var xs = [0, W], j;
+    for (i = 0; i < flat.length; i += 3) { xs.push(flat[i], flat[i] + flat[i + 2]); }
+    xs.sort(function (a, b) { return a - b; });
+    var gaps = 0, overlaps = 0;
+    for (j = 0; j + 1 < xs.length; j++) {
+      if (xs[j + 1] === xs[j]) continue;
+      var mid = (xs[j] + xs[j + 1]) / 2, segs = [];
+      for (i = 0; i < flat.length; i += 3) {
+        if (flat[i] <= mid && mid < flat[i] + flat[i + 2]) {
+          segs.push([flat[i + 1], flat[i + 1] + flat[i + 2]]);
+        }
+      }
+      segs.sort(function (a, b) { return a[0] - b[0]; });
+      var cursor = 0;
+      for (var k = 0; k < segs.length; k++) {
+        if (segs[k][0] > cursor) gaps++;
+        else if (segs[k][0] < cursor) overlaps++;
+        if (segs[k][1] > cursor) cursor = segs[k][1];
+      }
+      if (cursor < H) gaps++;
+    }
+    return {
+      ok: area === target && distinct && gaps === 0 && overlaps === 0,
+      area: area.toString(), distinct: distinct, primitive: primitive,
+      gaps: gaps, overlaps: overlaps
+    };
   }
 
   /* --------------------------------------------------- unbounded family */
@@ -311,6 +368,6 @@
     toFrame: toFrame, gcd: gcd, search: search,
     scaleCells: scaleCells, substituteOnce: substituteOnce,
     infiniteFamily: infiniteFamily, toFloatCells: toFloatCells,
-    jsSearch: jsSearch, jsVerify: jsVerify
+    jsSearch: jsSearch, jsVerify: jsVerify, verifyBigInt: verifyBigInt
   };
 });
