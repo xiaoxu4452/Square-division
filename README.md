@@ -222,11 +222,14 @@ The camera is finite even though the zoom is not: the viewport can never be drag
 | key | dissection | order |
 | --- | --- | --- |
 | `duv112` | 112×112 Duijvestijn perfect square (unique lowest-order solution) | 21 |
+| `cpss41` / `cpss41b` | 1568² / 1792² compound perfect squares (112 into itself) | 41 |
 | `mor32` | 33×32 Moroń smallest perfect rectangle | 9 |
 | `2to1` | 208×103 near-2:1 wide perfect rectangle | 15 |
 | `57x55` / `69x61` / `115x94` / `65x47` / `112x81` / `130x79` | classic perfect rectangles across aspect ratios | 9–11 |
 
 This mode has a finite number of squares (9–21); the camera still zooms and pans, while the density-field parameters do not apply and are hidden automatically.
+
+**Substitution refinement**: for square instances, the "Substitution depth" slider (0–3) applies the Henle–Henle / Anderson construction — replace one square by a shrunken copy of the whole tiling (the geometric counterpart of the electrical network's "sub-network substitution"). The square count grows `21 → 41 → 81 → 161` (order `n → 2n−1`), and **every step is re-verified for pairwise-distinct sides and exact coverage**. `cpss41` / `cpss41b` are order-41 compound perfect squared squares (CPSS) obtained by substituting Duijvestijn's 112 into itself, matching the Squaring.Net catalogue. Large side labels are shown with T/G/M/k suffixes.
 
 Theme and language are persisted in `localStorage`.
 
@@ -239,6 +242,7 @@ Useful for sharing a state or for automated screenshots:
 | `demo` | `demo=1` | Generate a finished tiling immediately |
 | `mode` | `mode=quad\|euclid\|network\|perfect` | Dissection algorithm |
 | `perfect` | `perfect=duv112` | Perfect dissection instance (see below) |
+| `level` | `level=2` | Substitution depth 0–3 (square instances only) |
 | `centers` | `centers=3` | Number of dense centres |
 | `ratio` | `ratio=1.5` | Rectangle aspect ratio |
 | `zoom` | `zoom=2000000` | Zoom multiplier centred on the first focus |

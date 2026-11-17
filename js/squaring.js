@@ -665,6 +665,95 @@
     };
   }
 
+  /* ---------------------------- Substitution refinement (CPSS) ---------------------------- */
+  /**
+   * Henle–Henle / Anderson substitution: replace one square of side s in a
+   * perfect tiling by a scaled copy of the WHOLE tiling whose outer frame
+   * equals s. Pick s dividing the frame and accept only a result whose sides
+   * remain pairwise distinct and whose coverage validates exactly. Repeating
+   * this yields compound perfect squared squares (order 21 -> 41 -> 81 -> 161).
+   *
+   * @param cells  flat [x,y,s,...] of a perfect tiling (integer coords)
+   * @param frame  current outer frame (square)
+   * @returns {cells, frame, via} of one valid substitution, or null
+   */
+  function substituteOnce(cellsFlat, frame) {
+    var cells = [], i;
+    for (i = 0; i < cellsFlat.length; i += 3) cells.push([cellsFlat[i], cellsFlat[i + 1], cellsFlat[i + 2]]);
+    // candidate substitution squares: side s with frame % s === 0, smallest first
+    // keeps the next frame as small as possible.
+    var cand = [], seen = Object.create(null);
+    for (i = 0; i < cells.length; i++) {
+      var s = cells[i][2];
+      if (!seen[s] && frame % s === 0) { seen[s] = 1; cand.push(s); }
+    }
+    cand.sort(function (a, b) { return a - b; });
+    for (var ci = 0; ci < cand.length; ci++) {
+      var sc = cand[ci], m = frame / sc, tgt = -1;
+      for (i = 0; i < cells.length; i++) if (cells[i][2] === sc) { tgt = i; break; }
+      if (tgt < 0) continue;
+      var out = [];
+      for (i = 0; i < cells.length; i++) {
+        if (i === tgt) continue;
+        out.push([cells[i][0] * m, cells[i][1] * m, cells[i][2] * m]);
+      }
+      var tx = cells[tgt][0] * m, ty = cells[tgt][1] * m;
+      // reject any coordinate beyond the safe-integer range (2^53)
+      if (tx + frame > 9007199254740991 || ty + frame > 9007199254740991) continue;
+      for (i = 0; i < cells.length; i++) out.push([tx + cells[i][0], ty + cells[i][1], cells[i][2]]);
+      // sides must stay pairwise distinct
+      var sides = Object.create(null), distinct = true;
+      for (i = 0; i < out.length; i++) {
+        if (sides[out[i][2]]) { distinct = false; break; }
+        sides[out[i][2]] = 1;
+      }
+      if (!distinct) continue;
+      // exact coverage via the project's scan-line validator
+      var blocks = [], frame2 = 0;
+      for (i = 0; i < out.length; i++) {
+        blocks.push({ x: out[i][0], y: out[i][1], s: out[i][2], wx: out[i][0], wy: out[i][1] });
+        frame2 = Math.max(frame2, out[i][0] + out[i][2], out[i][1] + out[i][2]);
+      }
+      var v = validate(blocks, { gw: frame2, gh: frame2 });
+      if (!v.ok) continue;
+      return { cells: out, frame: frame2, via: sc };
+    }
+    return null;
+  }
+
+  /** Apply `levels` substitution steps to a perfect tiling; returns blocks in world coords + meta. */
+  function substitutedTiling(key, levels, view) {
+    var PD = (typeof globalThis !== 'undefined' ? globalThis : window).PerfectData;
+    if (!PD) return null;
+    var t = PD.byKey(key) || PD.all()[0];
+    if (!t || t.w !== t.h) return null; // substitution keeps a square frame
+    levels = clamp(levels | 0, 0, 3);
+    var cellsFlat = t.cells.slice(), frame = t.w, i;
+    for (var L = 0; L < levels; L++) {
+      var r = substituteOnce(cellsFlat, frame);
+      if (!r) break;
+      cellsFlat = r.cells.reduce(function (a, c) { return a.concat(c); }, []);
+      frame = r.frame;
+    }
+    var ox = view ? (view.ox || 0) : 0, oy = view ? (view.oy || 0) : 0;
+    var blocks = [];
+    for (i = 0; i < cellsFlat.length; i += 3) {
+      blocks.push({
+        x: cellsFlat[i] - ox, y: cellsFlat[i + 1] - oy, s: cellsFlat[i + 2],
+        wx: cellsFlat[i], wy: cellsFlat[i + 1], depth: 0, label: cellsFlat[i + 2], kind: 'compound'
+      });
+    }
+    blocks.ox = ox; blocks.oy = oy;
+    return {
+      blocks: blocks,
+      meta: {
+        key: t.key, id: t.id, w: frame, h: frame,
+        order: cellsFlat.length / 3, levels: levels,
+        zh: t.zh, en: t.en, noteZh: t.noteZh, noteEn: t.noteEn
+      }
+    };
+  }
+
   /* ------------------------------------------------------------ Validation */
   /** Exact sweep-line validation: area conservation + every column fully tiled without overlap (for Node tests) */
   function validate(blocks, world) {
@@ -715,6 +804,8 @@
     colorize: colorize,
     staticTiling: staticTiling,
     perfectTiling: perfectTiling,
+    substituteOnce: substituteOnce,
+    substitutedTiling: substitutedTiling,
     validate: validate,
     mulberry32: mulberry32,
     hashGrid: hashGrid,

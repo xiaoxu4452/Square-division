@@ -29,7 +29,7 @@
     theme: 'dark', lang: 'zh', W: 1, H: 1, dpr: 1,
     phase: 'select', rectN: null, drag: null, pointer: null,
     view: { cx: BD.from(0), cy: BD.from(0), cxHi: 0, cyHi: 0, offX: 0, offY: 0, scale: 1, fitScale: 1 },
-    world: null, mode: 'quad', foci: [], perfectKey: 'duv112',
+    world: null, mode: 'quad', foci: [], perfectKey: 'duv112', perfectLevel: 0,
     staticBlocks: null, staticMeta: null,
     cache: new Map(), blocks: [], colors: [], drawOrder: [], meta: {},
     paint: {}, snapshot: null, snapView: null,
@@ -69,6 +69,17 @@
     if (v >= 10) return (Math.round(v * 10) / 10).toString();
     if (v >= 0.1) return v.toFixed(2);
     return v.toExponential(1);
+  }
+  /** Compact side label: substitution tiling can produce 14-digit integer sides. */
+  function compactSide(v) {
+    var n = +v;
+    if (!isFinite(n)) return String(v);
+    var a = Math.abs(n);
+    if (a < 10000) return Number.isInteger(n) ? String(n) : fmtSide(n);
+    if (a >= 1e12) return (n / 1e12).toPrecision(3) + 'T';
+    if (a >= 1e9) return (n / 1e9).toPrecision(3) + 'G';
+    if (a >= 1e6) return (n / 1e6).toPrecision(3) + 'M';
+    return (n / 1e3).toPrecision(3) + 'k';
   }
   /* Seed hygiene: every hash in the kernel mixes the seed with Math.imul, so
      the value is folded through ToInt32. Anything outside the signed 32-bit
@@ -233,10 +244,10 @@
   }
 
   /** A world whose outer rectangle is EXACTLY the tiling's integer w×h. */
-  function perfectWorld(t) {
+  function perfectWorld(w, h) {
     return {
-      gw: t.w, gh: t.h, m: t.w, n: t.h, L: 1, depth: 0,
-      ratio: t.w / t.h, srcRatio: t.w / t.h, perfect: true
+      gw: w, gh: h, m: w, n: h, L: 1, depth: 0,
+      ratio: w / h, srcRatio: w / h, perfect: true
     };
   }
 
@@ -256,7 +267,11 @@
       var pt = window.PerfectData && (PerfectData.byKey(state.perfectKey) || PerfectData.all()[0]);
       if (!pt) { toast(T.t('emptyWarn')); return; }
       state.perfectKey = pt.key;
-      world = perfectWorld(pt);
+      // Non-square instances cannot be substituted; keep level 0 for them.
+      if (pt.w !== pt.h) state.perfectLevel = 0;
+      var pst = S.substitutedTiling(state.perfectKey, state.perfectLevel);
+      var frameW = pst ? pst.meta.w : pt.w;
+      world = perfectWorld(frameW, pst ? pst.meta.h : pt.h);
     } else {
       world = S.buildWorld(ratio, { depth: +$('detail').value, rows: 12 });
     }
@@ -330,9 +345,10 @@
     // computed by the worker pool and passed in as `prepared`.
     var blocks;
     if (state.mode === 'perfect') {
-      // A finite perfect dissection: the audited tiling is returned whole and
-      // clipped by the viewport during paint (at most 21 squares — no LOD/worker).
-      var pf = S.perfectTiling(state.perfectKey, v);
+      // A finite perfect dissection: the audited tiling (optionally refined by
+      // substitution) is returned whole and clipped during paint — no LOD/worker.
+      var pf = S.substitutedTiling(state.perfectKey, state.perfectLevel, v);
+      if (!pf) pf = S.perfectTiling(state.perfectKey, v);
       blocks = pf.blocks;
       state.staticMeta = pf.meta;
     } else if (state.mode === 'quad') {
@@ -518,12 +534,18 @@
         ctx.fillRect(sx, sy, e, ps);
       }
       if (labels && ps > 46) {
-        var label = b.label != null ? String(b.label) : fmtSide(b.s);
+        var raw = b.label != null ? b.label : b.s;
+        var label = compactSide(raw);
+        // Fit the label inside the tile: cap font size by both tile size and
+        // the space needed for the widest string (monospace ≈ 0.6em per char).
         var fs = clamp(ps * 0.19, 10, 26);
-        ctx.font = '700 ' + fs.toFixed(0) + 'px ui-monospace, Consolas, monospace';
-        ctx.fillStyle = 'hsla(' + h + ',' + sat + '%,' + (l > 54 ? Math.max(12, l - 44) : Math.min(94, l + 44)) + '%,.92)';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(label, sx + ps / 2, sy + ps / 2);
+        fs = Math.min(fs, (ps - 6) / Math.max(1, label.length * 0.62));
+        if (fs >= 9) {
+          ctx.font = '700 ' + fs.toFixed(0) + 'px ui-monospace, Consolas, monospace';
+          ctx.fillStyle = 'hsla(' + h + ',' + sat + '%,' + (l > 54 ? Math.max(12, l - 44) : Math.min(94, l + 44)) + '%,.92)';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(label, sx + ps / 2, sy + ps / 2);
+        }
       }
     }
   }
@@ -663,7 +685,7 @@
     if (state.mode === 'perfect' && state.staticMeta) {
       var pm = state.staticMeta;
       var pname = state.lang === 'en' ? pm.en : pm.zh;
-      line = T.t('metaPerfect', { name: pname, order: pm.order, count: m.count });
+      line = T.t('metaPerfect', { name: pname, order: pm.order, count: m.count, levels: pm.levels || 0 });
     } else if (state.mode === 'euclid' && state.staticMeta) {
       line = T.t('metaEuclid', {
         cf: state.staticMeta.cf.join(', '), steps: state.staticMeta.cf.length,
@@ -696,8 +718,15 @@
     var perfect = state.mode === 'perfect';
     document.body.classList.toggle('mode-perfect', perfect);
     $('perfectPickField').hidden = !perfect;
+    var t = window.PerfectData && PerfectData.byKey(state.perfectKey);
+    var square = !!(t && t.w === t.h);
+    $('perfectLevelField').hidden = !perfect;
+    $('perfectLevel').disabled = !square;
     if (perfect) {
       updatePerfectNote();
+      $('perfectLevelVal').textContent = state.perfectLevel;
+      $('perfectLevel').value = state.perfectLevel;
+      setRangeFill($('perfectLevel'));
       if ($('showLabels')) $('showLabels').checked = true;
     }
   }
@@ -886,8 +915,21 @@
 
     $('perfectPick').addEventListener('change', function () {
       state.perfectKey = this.value;
+      var t = PerfectData.byKey(this.value);
+      if (t && t.w !== t.h) state.perfectLevel = 0;
       state.cache.clear();
       updatePerfectNote();
+      updateAlgoHint();
+      if (state.phase === 'result') runCompute();
+    });
+
+    $('perfectLevel').addEventListener('input', function () {
+      $('perfectLevelVal').textContent = this.value;
+      setRangeFill(this);
+    });
+    $('perfectLevel').addEventListener('change', function () {
+      state.perfectLevel = +this.value;
+      state.cache.clear();
       if (state.phase === 'result') runCompute();
     });
 
@@ -1197,6 +1239,10 @@
       if (q.get('perfect')) {
         var pk = PerfectData.byKey(q.get('perfect')) ? q.get('perfect') : 'duv112';
         state.perfectKey = pk; $('perfectPick').value = pk; updatePerfectNote();
+      }
+      if (q.get('level')) {
+        state.perfectLevel = clamp(+q.get('level') || 0, 0, 3);
+        $('perfectLevel').value = state.perfectLevel; $('perfectLevelVal').textContent = state.perfectLevel;
       }
       if (q.get('centers')) { $('centers').value = q.get('centers'); $('centersVal').textContent = q.get('centers'); setRangeFill($('centers')); }
       if (q.get('order')) { $('order').value = q.get('order'); $('orderVal').textContent = q.get('order'); setRangeFill($('order')); }

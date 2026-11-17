@@ -295,6 +295,29 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
     sides.slice().sort((a, b) => a - b).join(',') ===
     '2,4,6,7,8,9,11,15,16,17,18,19,24,25,27,29,33,35,37,42,50');
 
+  // Substitution refinement: 21 -> 41 -> 81 -> 161 squares, all distinct.
+  {
+    let chainOk = true, prev = 21;
+    for (const L of [0, 1, 2, 3]) {
+      const r = S.substitutedTiling('duv112', L, { ox: 0, oy: 0 });
+      if (!r) { chainOk = false; break; }
+      const vv = S.validate(r.blocks, { gw: r.meta.w, gh: r.meta.h });
+      const sd = r.blocks.map(b => b.s);
+      const distinct = new Set(sd).size === sd.length;
+      if (!vv.ok || !distinct || r.blocks.length !== prev) chainOk = false;
+      prev = 2 * prev - 1; // order n -> 2n-1 under substitution
+    }
+    ok('substitution refines 21→41→81→161 with distinct sides + exact coverage', chainOk,
+      '4 levels verified by scan-line');
+    const r2 = S.substitutedTiling('duv112', 2, { ox: 5, oy: -3 });
+    ok('substituted tiling honours the viewport-local offset',
+      !!r2 && r2.blocks.every(b => b.x === b.wx - 5 && b.y === b.wy + 3) &&
+      r2.blocks.length === 81);
+    const one = S.substituteOnce(require('../js/perfect-data.js').byId('duv112').cells, 112);
+    ok('substituteOnce picks a valid substitution point', !!one && one.cells.length === 41,
+      one ? 'order=' + one.cells.length + ' via=' + one.via : 'null');
+  }
+
   // Adjacent-different colouring must hold on a perfect tiling too.
   const pf = S.perfectTiling('duv112', { ox: 0, oy: 0 });
   const colors = S.colorize(pf.blocks, null, { palette: 'spectrum', theme: 'dark', seed: 7 });

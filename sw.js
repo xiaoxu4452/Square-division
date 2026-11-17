@@ -10,14 +10,14 @@
  */
 'use strict';
 
-const VERSION = 'sqr-v6';
+const VERSION = 'sqr-v8';
 const CACHE = VERSION + '-static';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
-  './css/style.css',
-  './js/i18n.js', './js/bigdec.js', './js/perfect-data.js', './js/squaring.js',
-  './js/wasm-module.js', './js/wasm-engine.js',
-  './js/tiling-worker.js', './js/app.js',
+  './css/style.css?v=8',
+  './js/i18n.js?v=8', './js/bigdec.js?v=8', './js/perfect-data.js?v=8', './js/squaring.js?v=8',
+  './js/wasm-module.js?v=8', './js/wasm-engine.js?v=8',
+  './js/tiling-worker.js', './js/tiling-worker.js?v=8', './js/app.js?v=8',
   './essay.zh.html', './essay.en.html',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
   './wasm/tiling_core.wasm'
@@ -76,17 +76,23 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // Static assets: serve from cache immediately, refresh in the background.
+  // Static assets: NETWORK-FIRST with cache fallback.
+  // A cache-first policy made users keep a stale app after a new deploy: the
+  // old service worker served an outdated index.html/js/css indefinitely, so
+  // new modes (e.g. perfect dissection) never appeared until a hard reload.
+  // GitHub Pages is online and fast; fetching fresh first guarantees updates,
+  // while the cached copy keeps the app fully usable offline.
   event.respondWith(
-    caches.match(req).then(function (hit) {
-      const network = fetch(req).then(function (res) {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(function (c) { return c.put(req, copy); }).catch(function () {});
-        }
-        return res;
-      }).catch(function () { return hit; });
-      return hit || network;
+    fetch(req).then(function (res) {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then(function (c) { return c.put(req, copy); }).catch(function () {});
+      }
+      return res;
+    }).catch(function () {
+      return caches.match(req).then(function (hit) {
+        return hit || Response.error();
+      });
     })
   );
 });

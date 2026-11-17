@@ -393,3 +393,6 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius
    for a finite perfect tiling, so hide them and surface the instance picker. */
 body.mode-perfect [data-pmode-hide] { display: none !important; }
 #perfectPickField[hidden] { display: none; }
+
+/* Perfect substitution controls follow the same visibility contract. */
+#perfectPickField[hidden], #perfectLevelField[hidden] { display: none !important; }
