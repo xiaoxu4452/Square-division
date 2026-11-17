@@ -162,7 +162,10 @@ Square-division/
 ├── js/
 │   ├── i18n.js           # Chinese / English dictionaries and DOM text binding
 │   ├── bigdec.js         # BigInt fixed-point decimals (80 fractional digits)
-│   ├── perfect-data.js   # 9 audited perfect dissections (Bouwkampcode, precomputed)
+│   ├── perfect-data.js   # 11 audited perfect dissections (Bouwkampcode, precomputed)
+│   ├── perfect-catalog.js # 1054 verified simple perfect rectangles (orders 9-14)
+│   ├── perfect-match.js   # exact ratio rationalisation + Decimal-residual matching
+│   ├── vendor/fraction.min.js, vendor/decimal.min.js  # vendored arithmetic (no CDN)
 │   ├── squaring.js       # Dissection engine, adjacency graph, colouring, validation
 │   ├── wasm-module.js    # Generated: base64-inlined C++/WASM binary (offline workers)
 │   ├── wasm-engine.js    # Task splitter, worker pool, synchronous first frame, fallbacks
@@ -227,7 +230,9 @@ The camera is finite even though the zoom is not: the viewport can never be drag
 | `2to1` | 208×103 near-2:1 wide perfect rectangle | 15 |
 | `57x55` / `69x61` / `115x94` / `65x47` / `112x81` / `130x79` | classic perfect rectangles across aspect ratios | 9–11 |
 
-This mode has a finite number of squares (9–21); the camera still zooms and pans, while the density-field parameters do not apply and are hidden automatically.
+**Aspect-ratio matching**: with "Match the drawn ratio in the catalogue" enabled (default), the aspect ratio you draw is rationalised by Fraction.js (continued fractions, denominator ≤ 20000) and matched against all **1054 verified simple perfect rectangles** from the Bouwkampcode corpus (orders 9–14). Decimal.js evaluates the residual at 40 significant digits; the closest instance is displayed with its rational ratio, exact frame and percentage error, e.g. `3:2 → 374×249 · error 0.134%`. The catalogue is decoded deterministically in skyline order (no runtime search), all 1054 records are audited for area conservation, zero gaps and pairwise-distinct integer sides, and the chosen tiling always covers its frame exactly. Uncheck the box (or pick an instance manually) to return to the curated list; automatically matched tilings disable substitution.
+
+This mode has a finite number of squares (9–161); the camera still zooms and pans, while the density-field parameters do not apply and are hidden automatically.
 
 **Substitution refinement**: for square instances, the "Substitution depth" slider (0–3) applies the Henle–Henle / Anderson construction — replace one square by a shrunken copy of the whole tiling (the geometric counterpart of the electrical network's "sub-network substitution"). The square count grows `21 → 41 → 81 → 161` (order `n → 2n−1`), and **every step is re-verified for pairwise-distinct sides and exact coverage**. `cpss41` / `cpss41b` are order-41 compound perfect squared squares (CPSS) obtained by substituting Duijvestijn's 112 into itself, matching the Squaring.Net catalogue. Large side labels are shown with T/G/M/k suffixes.
 
@@ -241,7 +246,8 @@ Useful for sharing a state or for automated screenshots:
 | --- | --- | --- |
 | `demo` | `demo=1` | Generate a finished tiling immediately |
 | `mode` | `mode=quad\|euclid\|network\|perfect` | Dissection algorithm |
-| `perfect` | `perfect=duv112` | Perfect dissection instance (see below) |
+| `perfect` | `perfect=duv112` | Curated perfect dissection instance (see below) |
+| `match` | `match=0` | Disable automatic aspect-ratio matching (`1` / absent = enabled) |
 | `level` | `level=2` | Substitution depth 0–3 (square instances only) |
 | `centers` | `centers=3` | Number of dense centres |
 | `ratio` | `ratio=1.5` | Rectangle aspect ratio |

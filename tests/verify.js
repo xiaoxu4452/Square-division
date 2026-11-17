@@ -373,5 +373,43 @@ ok('BigDec 1e-30 * 1e9 === 1e-21',
     'js=' + js.length + ' wasm=' + (wasm ? wasm.length : 'null'));
 }
 
+/* --------------------- Bouwkampcode catalogue + ratio matching --------------------- */
+{
+  const C = require('../js/perfect-catalog.js');
+  const M = require('../js/perfect-match.js');
+  ok('catalogue holds 1054 authoritative records',
+    C.count === 1054 && C.all().length === 1054,
+    'count=' + C.count);
+
+  let packed = 0, distinct = 0, areaOk = 0;
+  for (const t of C.all()) {
+    const cells = C.pack(t);
+    if (cells && cells.length === t.sides.length) packed++;
+    if (new Set(t.sides).size === t.sides.length) distinct++;
+    if (t.sides.reduce((a, s) => a + s * s, 0) === t.w * t.h) areaOk++;
+  }
+  ok('every catalogue record decodes to an exact skyline packing',
+    packed === 1054 && distinct === 1054 && areaOk === 1054,
+    'packed=' + packed + ' distinct=' + distinct + ' area=' + areaOk);
+
+  for (const ratio of [1.5, 16 / 9, 1, 0.62]) {
+    const m = M.match(ratio, { maxDen: 20000 });
+    const frame = { gw: m.record.w, gh: m.record.h };
+    const p = S.tilingFromCells(m.cells, m.record.w, m.record.h, null, m.record);
+    const v = S.validate(p.blocks, frame);
+    const sides = m.record.sides;
+    ok('ratio ' + ratio.toFixed(3) + ' matches a distinct-sided exact catalogue tiling',
+      !!m && v.ok && v.gaps === 0 && v.overlaps === 0 &&
+      new Set(sides).size === sides.length && m.errorPercent < 1,
+      'ratio=' + m.ratio.text + ' frame=' + m.record.w + 'x' + m.record.h +
+      ' err=' + m.errorPercent.toFixed(4) + '%');
+  }
+
+  const frac = M.rationalise(1.777777, 20000);
+  const residual = M.errorPercent(frac, { w: 593, h: 335 });
+  ok('Decimal.js keeps the matching residual non-zero', residual > 0 && residual < 1,
+    'fraction=' + frac.text + ' residual=' + residual.toFixed(6) + '%');
+}
+
 console.log('\n' + (fail === 0 ? 'ALL PASS' : fail + ' FAILED'));
 process.exit(fail ? 1 : 0);

@@ -149,7 +149,10 @@ Square-division/
 ├── js/
 │   ├── i18n.js           # 中英词典与 DOM 文本绑定
 │   ├── bigdec.js         # BigInt 定点高精度十进制（80 位小数）
-│   ├── perfect-data.js   # 9 组经校验的完美剖分（Bouwkampcode，预计算坐标）
+│   ├── perfect-data.js   # 11 组经校验的完美剖分（Bouwkampcode，预计算坐标）
+│   ├── perfect-catalog.js # 1054 条经验证的简单完美矩形（9–14 阶）
+│   ├── perfect-match.js   # 精确有理化 + Decimal 高精度误差匹配
+│   ├── vendor/fraction.min.js, vendor/decimal.min.js  # 本地算术库（无 CDN）
 │   ├── squaring.js       # 剖分引擎、邻接图、着色、正确性校验
 │   ├── wasm-module.js    # 生成物：base64 内联 C++/WASM 二进制（Worker 离线可用）
 │   ├── wasm-engine.js    # 任务分片、Worker 池、同步首帧与降级路径
@@ -214,7 +217,9 @@ Square-division/
 | `2to1` | 208×103 近 2:1 宽幅完美矩形 | 15 |
 | `57x55` / `69x61` / `115x94` / `65x47` / `112x81` / `130x79` | 不同长宽比的经典完美矩形 | 9–11 |
 
-此模式下方块数量有限（9–21 块），相机仍可缩放平移；密集中心等尺寸场参数不适用，会自动隐藏。
+**长宽比匹配**：默认勾选「按所画比例自动匹配目录」时，Fraction.js 用连分数把所画比例有理化（分母 ≤ 20000），再在 **1054 条经验证的简单完美矩形**（Bouwkampcode，9–14 阶）中按长宽比匹配；Decimal.js 以 40 位有效数字计算残差。界面显示有理比、精确外框和误差百分比，例如 `3:2 → 374×249 · 误差 0.134%`。目录按 skyline 顺序确定性解码（不做运行时搜索），1054 条全部通过面积守恒、零缝隙与边长互异校验，选中的剖分始终精确铺满其外框。取消勾选或手动选择实例即可回到精选列表；自动匹配时禁用代入细分。
+
+此模式下方块数量有限（9–161 块），相机仍可缩放平移；密集中心等尺寸场参数不适用，会自动隐藏。
 
 **代入细分（substitution）**：对正方形实例可拖动「代入细分级别」滑块 0–3。它实现 Henle–Henle / Anderson 的代入构造——把一个方块替换为整个剖分的缩小副本（正是电网络「子网络替换」的几何对应），方块数按 `21 → 41 → 81 → 161` 递归增长（阶数 `n → 2n−1`），**每一步都重新校验边长两两互异与精确铺满**。其中 `cpss41` / `cpss41b` 是把 Duijvestijn 112 代入自身得到的 41 阶复合完美正方形（CPSS），与 Squaring.Net 记载一致。大边长标注会以 T/G/M/k 缩写显示。
 
@@ -228,7 +233,8 @@ Square-division/
 | --- | --- | --- |
 | `demo` | `demo=1` | 打开即生成完成态剖分 |
 | `mode` | `mode=quad\|euclid\|network\|perfect` | 剖分算法 |
-| `perfect` | `perfect=duv112` | 完美剖分实例（见下） |
+| `perfect` | `perfect=duv112` | 精选完美剖分实例（见下） |
+| `match` | `match=0` | 关闭自动长宽比匹配（默认开启） |
 | `level` | `level=2` | 代入细分级别 0–3（仅正方形实例） |
 | `centers` | `centers=3` | 密集中心数量 |
 | `ratio` | `ratio=1.5` | 矩形长宽比 |

@@ -30,6 +30,7 @@
     phase: 'select', rectN: null, drag: null, pointer: null,
     view: { cx: BD.from(0), cy: BD.from(0), cxHi: 0, cyHi: 0, offX: 0, offY: 0, scale: 1, fitScale: 1 },
     world: null, mode: 'quad', foci: [], perfectKey: 'duv112', perfectLevel: 0,
+    perfectMatch: null, perfectSource: null, perfectDrawnRatio: 0,
     staticBlocks: null, staticMeta: null,
     cache: new Map(), blocks: [], colors: [], drawOrder: [], meta: {},
     paint: {}, snapshot: null, snapView: null,
@@ -237,6 +238,14 @@
   }
 
   function updatePerfectNote() {
+    var m = state.perfectMatch;
+    if (m) {
+      $('perfectNote').textContent = T.t('perfectMatchNote', {
+        ratio: m.ratio.text, wh: m.record.w + '×' + m.record.h,
+        err: m.errorPercent.toFixed(3), count: m.record.order
+      });
+      return;
+    }
     var t = window.PerfectData && PerfectData.byKey(state.perfectKey);
     if (!t) return;
     $('perfectNote').textContent = (state.lang === 'en' ? t.noteEn : t.noteZh) +
@@ -264,14 +273,37 @@
     var oldWorld = state.world;
     var world;
     if (state.mode === 'perfect') {
-      var pt = window.PerfectData && (PerfectData.byKey(state.perfectKey) || PerfectData.all()[0]);
-      if (!pt) { toast(T.t('emptyWarn')); return; }
-      state.perfectKey = pt.key;
-      // Non-square instances cannot be substituted; keep level 0 for them.
-      if (pt.w !== pt.h) state.perfectLevel = 0;
-      var pst = S.substitutedTiling(state.perfectKey, state.perfectLevel);
-      var frameW = pst ? pst.meta.w : pt.w;
-      world = perfectWorld(frameW, pst ? pst.meta.h : pt.h);
+      state.perfectMatch = null;
+      state.perfectSource = null;
+      var auto = $('matchRatio') && $('matchRatio').checked && ratio;
+      if (auto && window.PerfectMatch) {
+        var mr = PerfectMatch.match(ratio, { maxDen: 20000 });
+        if (mr) {
+          state.perfectMatch = mr;
+          state.perfectDrawnRatio = ratio;
+          state.perfectSource = {
+            cells: mr.cells, w: mr.record.w, h: mr.record.h,
+            meta: {
+              w: mr.record.w, h: mr.record.h, order: mr.record.order,
+              key: mr.record.key, source: 'catalog',
+              zh: T.t('catalogName', { wh: mr.record.w + '×' + mr.record.h }),
+              en: 'Catalogue ' + mr.record.w + '×' + mr.record.h
+            }
+          };
+          state.perfectLevel = 0;
+          world = perfectWorld(mr.record.w, mr.record.h);
+        }
+      }
+      if (!state.perfectSource) {
+        var pt = window.PerfectData && (PerfectData.byKey(state.perfectKey) || PerfectData.all()[0]);
+        if (!pt) { toast(T.t('emptyWarn')); return; }
+        state.perfectKey = pt.key;
+        // Non-square instances cannot be substituted; keep level 0 for them.
+        if (pt.w !== pt.h) state.perfectLevel = 0;
+        var pst = S.substitutedTiling(state.perfectKey, state.perfectLevel);
+        var frameW = pst ? pst.meta.w : pt.w;
+        world = perfectWorld(frameW, pst ? pst.meta.h : pt.h);
+      }
     } else {
       world = S.buildWorld(ratio, { depth: +$('detail').value, rows: 12 });
     }
@@ -345,9 +377,12 @@
     // computed by the worker pool and passed in as `prepared`.
     var blocks;
     if (state.mode === 'perfect') {
-      // A finite perfect dissection: the audited tiling (optionally refined by
-      // substitution) is returned whole and clipped during paint — no LOD/worker.
-      var pf = S.substitutedTiling(state.perfectKey, state.perfectLevel, v);
+      // A ratio-matched catalogue tiling carries already-decoded exact cells;
+      // curated instances keep the audited data and optional substitution.
+      var pf = state.perfectSource
+        ? S.tilingFromCells(state.perfectSource.cells, state.perfectSource.w,
+                            state.perfectSource.h, v, state.perfectSource.meta)
+        : S.substitutedTiling(state.perfectKey, state.perfectLevel, v);
       if (!pf) pf = S.perfectTiling(state.perfectKey, v);
       blocks = pf.blocks;
       state.staticMeta = pf.meta;
@@ -684,8 +719,16 @@
     var line;
     if (state.mode === 'perfect' && state.staticMeta) {
       var pm = state.staticMeta;
-      var pname = state.lang === 'en' ? pm.en : pm.zh;
-      line = T.t('metaPerfect', { name: pname, order: pm.order, count: m.count, levels: pm.levels || 0 });
+      if (state.perfectMatch) {
+        var mr = state.perfectMatch;
+        line = T.t('metaPerfectMatch', {
+          ratio: mr.ratio.text, wh: mr.record.w + '×' + mr.record.h,
+          err: mr.errorPercent.toFixed(3), count: mr.record.order
+        });
+      } else {
+        var pname = state.lang === 'en' ? pm.en : pm.zh;
+        line = T.t('metaPerfect', { name: pname, order: pm.order, count: m.count, levels: pm.levels || 0 });
+      }
     } else if (state.mode === 'euclid' && state.staticMeta) {
       line = T.t('metaEuclid', {
         cf: state.staticMeta.cf.join(', '), steps: state.staticMeta.cf.length,
@@ -719,9 +762,10 @@
     document.body.classList.toggle('mode-perfect', perfect);
     $('perfectPickField').hidden = !perfect;
     var t = window.PerfectData && PerfectData.byKey(state.perfectKey);
-    var square = !!(t && t.w === t.h);
+    var square = !state.perfectMatch && !!(t && t.w === t.h);
     $('perfectLevelField').hidden = !perfect;
     $('perfectLevel').disabled = !square;
+    if ($('perfectPick')) $('perfectPick').disabled = !!state.perfectMatch;
     if (perfect) {
       updatePerfectNote();
       $('perfectLevelVal').textContent = state.perfectLevel;
@@ -842,6 +886,8 @@
     $('langZh').classList.toggle('is-active', v === 'zh');
     $('langEn').classList.toggle('is-active', v === 'en');
     if (state.modalOpen) syncEssay();
+    if ($('perfectNote')) updatePerfectNote();
+    if ($('perfectPick')) fillPerfectPicker();
   }
 
   function toggleConsole(force) {
@@ -917,10 +963,23 @@
       state.perfectKey = this.value;
       var t = PerfectData.byKey(this.value);
       if (t && t.w !== t.h) state.perfectLevel = 0;
+      // Manual instance selection takes precedence over ratio matching.
+      if ($('matchRatio')) $('matchRatio').checked = false;
+      state.perfectMatch = null;
+      state.perfectSource = null;
       state.cache.clear();
       updatePerfectNote();
       updateAlgoHint();
       if (state.phase === 'result') runCompute();
+    });
+
+    if ($('matchRatio')) $('matchRatio').addEventListener('change', function () {
+      state.cache.clear();
+      if (state.phase !== 'result') return;
+      var r = state.perfectDrawnRatio ||
+              (state.rectN ? state.rectN.w / state.rectN.h : 0) ||
+              (state.world ? state.world.srcRatio : 0);
+      runCompute({ ratio: r, noAnim: true });
     });
 
     $('perfectLevel').addEventListener('input', function () {
@@ -1240,6 +1299,7 @@
         var pk = PerfectData.byKey(q.get('perfect')) ? q.get('perfect') : 'duv112';
         state.perfectKey = pk; $('perfectPick').value = pk; updatePerfectNote();
       }
+      if (q.get('match') === '0' && $('matchRatio')) $('matchRatio').checked = false;
       if (q.get('level')) {
         state.perfectLevel = clamp(+q.get('level') || 0, 0, 3);
         $('perfectLevel').value = state.perfectLevel; $('perfectLevelVal').textContent = state.perfectLevel;

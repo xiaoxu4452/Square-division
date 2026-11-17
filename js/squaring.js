@@ -665,6 +665,32 @@
     };
   }
 
+  /**
+   * Generic tiling from already-decoded exact integer cells. Used by the
+   * ratio-matched catalogue entries, which do not belong to PerfectData.
+   */
+  function tilingFromCells(cells, w, h, view, meta) {
+    var ox = view ? (view.ox || 0) : 0, oy = view ? (view.oy || 0) : 0;
+    var flat = cells;
+    if (cells.length && Array.isArray(cells[0])) {
+      flat = [];
+      for (var k = 0; k < cells.length; k++) flat.push(cells[k][0], cells[k][1], cells[k][2]);
+    }
+    var blocks = [], i;
+    for (i = 0; i < flat.length; i += 3) {
+      blocks.push({
+        x: flat[i] - ox, y: flat[i + 1] - oy, s: flat[i + 2],
+        wx: flat[i], wy: flat[i + 1], depth: 0,
+        label: flat[i + 2], kind: 'catalog'
+      });
+    }
+    blocks.ox = ox; blocks.oy = oy;
+    return {
+      blocks: blocks,
+      meta: meta || { w: w, h: h, order: cells.length / 3, source: 'catalog' }
+    };
+  }
+
   /* ---------------------------- Substitution refinement (CPSS) ---------------------------- */
   /**
    * Henle–Henle / Anderson substitution: replace one square of side s in a
@@ -804,6 +830,7 @@
     colorize: colorize,
     staticTiling: staticTiling,
     perfectTiling: perfectTiling,
+    tilingFromCells: tilingFromCells,
     substituteOnce: substituteOnce,
     substitutedTiling: substitutedTiling,
     validate: validate,
